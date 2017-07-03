@@ -63,7 +63,8 @@ module.exports = class FactPurchasingEtlManager extends BaseManager {
     }
 
     extractPR(time) {
-        var timestamp = new Date(time[0].start);
+        var timestamp = time.length > 0 ? new Date(time[0].start) :new Date("1970-01-01");
+        // var timestamp = "1970-01-01";
         return this.purchaseRequestManager.collection.find({
             _createdBy: {
                 "$nin": ["dev", "unit-test"]
@@ -75,7 +76,8 @@ module.exports = class FactPurchasingEtlManager extends BaseManager {
     }
 
     extractPO(time) {
-        var timestamp = new Date(time[0].start);
+        var timestamp = time.length > 0 ? new Date(time[0].start) : new Date("1970-01-01");
+        // var timestamp = "1970-01-01";
         return this.purchaseOrderManager.collection.find({
             _createdBy: {
                 "$nin": ["dev", "unit-test"]
