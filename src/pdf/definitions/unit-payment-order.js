@@ -199,7 +199,7 @@ module.exports = function (unitPaymentOrder) {
                 style: ['size08', 'right']
             }, {
                 columns: [{
-                    width: '10%',
+                    width: '20%',
                     text: `${currency}`
                 }, {
                         width: '*',
@@ -209,7 +209,7 @@ module.exports = function (unitPaymentOrder) {
                 style: ['size08']
             }, {
                 columns: [{
-                    width: '10%',
+                    width: '20%',
                     text: `${currency}`
                 }, {
                         width: '*',
@@ -236,7 +236,7 @@ module.exports = function (unitPaymentOrder) {
 
     var table = [{
         table: {
-            widths: ['5%', '25%', '10%', '15%', '17%', '15%', '13%'],
+            widths: ['4%', '25%', '10%', '17%', '20%', '12%', '12%'],
             headerRows: 1,
             body: [].concat([thead], tbody)
         }
@@ -263,7 +263,7 @@ module.exports = function (unitPaymentOrder) {
                                 },
                                 {
                                     width: '*',
-                                    text: unitPaymentOrder.useVat ? parseFloat(vat).toLocaleString(locale, locale.currencyNotaItern) : "",
+                                    text: unitPaymentOrder.useVat ? parseFloat(Math.round(vat * 100) / 100).toLocaleString(locale, locale.currencyNotaItern) : "",
                                     style: 'right'
                                 }]
                         }, {
@@ -281,7 +281,7 @@ module.exports = function (unitPaymentOrder) {
                                 },
                                 {
                                     width: '*',
-                                    text: unitPaymentOrder.useVat ? parseFloat((sum + incomeTax) - vat).toLocaleString(locale, locale.currencyNotaItern) : "",
+                                    text: unitPaymentOrder.useVat ? parseFloat(Math.round(((sum + incomeTax) - vat) * 100) / 100).toLocaleString(locale, locale.currencyNotaItern) : "",
                                     style: 'right'
                                 }]
                         }]
@@ -304,7 +304,7 @@ module.exports = function (unitPaymentOrder) {
                                 },
                                 {
                                     width: '*',
-                                    text: parseFloat(sum).toLocaleString(locale, locale.currencyNotaItern),
+                                    text: parseFloat(Math.round(sum * 100) / 100).toLocaleString(locale, locale.currencyNotaItern),
                                     style: 'right'
                                 }]
                         }, {
@@ -318,7 +318,7 @@ module.exports = function (unitPaymentOrder) {
                                 },
                                 {
                                     width: '*',
-                                    text: unitPaymentOrder.useIncomeTax ? parseFloat(incomeTax).toLocaleString(locale, locale.currencyNotaItern) : '',
+                                    text: unitPaymentOrder.useIncomeTax ? parseFloat(Math.round(incomeTax * 100) / 100).toLocaleString(locale, locale.currencyNotaItern) : '',
                                     style: 'right'
                                 }]
                         }, {
@@ -332,7 +332,7 @@ module.exports = function (unitPaymentOrder) {
                                 },
                                 {
                                     width: '*',
-                                    text: parseFloat(sum + incomeTax).toLocaleString(locale, locale.currencyNotaItern),
+                                    text: parseFloat(Math.round((sum + incomeTax) * 100) / 100).toLocaleString(locale, locale.currencyNotaItern),
                                     style: 'right'
                                 }]
                         }]
