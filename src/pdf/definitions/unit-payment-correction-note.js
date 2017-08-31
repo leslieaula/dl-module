@@ -139,7 +139,7 @@ module.exports = function (unitPaymentCorrection) {
                 style: ['size08', 'right']
             }, {
                 columns: [{
-                    width: '20%',
+                    width: '25%',
                     text: currency,
                     style: ['size08']
                 }, {
@@ -149,7 +149,7 @@ module.exports = function (unitPaymentCorrection) {
                     }]
             }, {
                 columns: [{
-                    width: '20%',
+                    width: '25%',
                     text: currency,
                     style: ['size08']
                 }, {
