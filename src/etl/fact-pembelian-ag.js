@@ -63,7 +63,7 @@ module.exports = class FactPurchasingEtlManager extends BaseManager {
     }
 
     extractPR(time) {
-        var timestamp = time.length > 0 ? new Date(time[0].start) :new Date("1970-01-01");
+        var timestamp = time.length > 0 ? new Date(time[0].start) : new Date("1970-01-01");
         // var timestamp = "1970-01-01";
         return this.purchaseRequestManager.collection.find({
             _createdBy: {
@@ -114,7 +114,34 @@ module.exports = class FactPurchasingEtlManager extends BaseManager {
                     $nin: ["dev", "unit-test"]
                 },
                 purchaseRequestId: purchaseRequest._id
-            })
+            }, {
+                    _createdDate: 1,
+                    _createdBy: 1,
+                    no: 1,
+                    _deleted: 1,
+                    "purchaseOrderExternal._createdDate": 1,
+                    "purchaseOrderExternal.no": 1,
+                    "purchaseOrder.purchaseRequest.no": 1,
+                    "purchaseOrderExternal.supplier.code": 1,
+                    "purchaseOrderExternal.supplier.name": 1,
+                    "purchaseOrderExternal.currency.code": 1,
+                    "purchaseOrderExternal.currency.name": 1,
+                    "purchaseOrderExternal.currency.description": 1,
+                    "purchaseOrderExternal.paymentMethod": 1,
+                    "purchaseOrderExternal.currencyRate": 1,
+                    "purchaseOrderExternal.expectedDeliveryDate": 1,
+                    "items.product.code": 1,
+                    "items.product.name": 1,
+                    "items.dealQuantity": 1,
+                    "items.dealUom.unit": 1,
+                    "items.pricePerDealUnit": 1,
+                    "items.fulfillments.deliveryOrderNo": 1,
+                    "items.fulfillments.deliveryOrderDate": 1,
+                    "items.fulfillments.unitReceiptNoteNo": 1,
+                    "items.fulfillments.unitReceiptNoteDate": 1,
+                    "items.fulfillments.interNoteNo": 1,
+                    "items.fulfillments.interNoteDate": 1
+                })
                 .toArray()
                 .then((purchaseOrders) => {
                     var arr = purchaseOrders.map((purchaseOrder) => {
@@ -558,8 +585,5 @@ module.exports = class FactPurchasingEtlManager extends BaseManager {
                     reject(err);
                 })
         })
-            .catch((err) => {
-                reject(err);
-            })
     }
 }
