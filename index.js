@@ -130,9 +130,13 @@ module.exports = {
         }
     },
     etl: {
-        factPembelian: require("./src/etl/fact-pembelian-ag"),
-        factTotalHutang: require("./src/etl/fact-total-hutang-etl-ag-manager"),
-        dimDivision: require("./src/etl/dim-division-etl-ag-manager"),
-        dimSupplier: require("./src/etl/dim-supplier-etl-ag-manager"),
+        dim: {
+            factPembelian: require("./src/etl/fact-pembelian-ag"),
+            factTotalHutang: require("./src/etl/fact-total-hutang-etl-ag-manager")
+        },
+        purchasing: {
+            dimDivision: require("./src/etl/dim-division-etl-ag-manager"),
+            dimSupplier: require("./src/etl/dim-supplier-etl-ag-manager")
+        }
     }
 }
