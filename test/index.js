@@ -8,53 +8,13 @@ function test(name, path) {
 describe('#dl-module', function (done) {
     this.timeout(2 * 60000);
 
-    // Auth
+    //Auth
     test('@AUTH/ACCOUNT', './auth/account');
     test('@AUTH/ROLE', './auth/role');
     test('@AUTH/API-ENDPOINT', './auth/api-endpoint');
 
     // Migration Log
     test('@Migration Log/Migration Log', './migration-log/migration-log');
-
-    //Etl
-    test('@ETL/DIM-BUYER', './etl/dim/dim-buyer');
-    test('@ETL/DIM-CATEGORY', './etl/dim/dim-category');
-    test('@ETL/DIM-DIVISION', './etl/dim/dim-division');
-    test('@ETL/DIM-SUPPLIER', './etl/dim/dim-supplier');
-    test('@ETL/DIM-MACHINE', './etl/dim/dim-machine');
-    test('@ETL/DIM-UNIT', './etl/dim/dim-unit');
-    test('@ETL/DIM-PROCESS-TYPE', './etl/dim/dim-process-type');
-    test('@ETL/DIM-ORDER-TYPE', './etl/dim/dim-order-type');
-    test('@ETL/DIM-PRODUCT', './etl/dim/dim-product');
-    test('@ETL/DIM-STORAGE', './etl/dim/dim-storage');
-    test('@ETL/DIM-STAFF', './etl/dim/dim-staff');
-    test('@ETL/DIM-COMPANY', './etl/dim/dim-company');
-    test('@ETL/DIM-CONTACT', './etl/dim/dim-contact');
-    test('@ETL/DIM-DURATION-ESTIMATION', './etl/dim/dim-duration-estimation');
-    test('@ETL/DIM-BUDGET', './etl/dim/dim-budget');
-    test('@ETL/FACT-TOTAL-HUTANG', './etl/purchasing/fact-total-hutang');
-    test('@ETL/FACT-PURCHASING', './etl/purchasing/fact-purchasing');
-    test('@ETL/FACT-MONITORING-EVENT', './etl/production/fact-monitoring-event');
-    test('@ETL/FACT-PRODUCTION-ORDER', './etl/production/fact-production-order');
-    test('@ETL/FACT-PRODUCTION-ORDER-STATUS', './etl/sales/fact-production-order-status');
-    test('@ETL/FACT-WEAVING-SALES-CONTRACT', './etl/sales/fact-weaving-sales-contract');
-    test('@ETL/FACT-FINISHING-PRINTING-SALES-CONTRACT', './etl/sales/fact-finishing-printing-sales-contract');
-    test('@ETL/FACT-SPINNING-SALES-CONTRACT', './etl/sales/fact-spinning-sales-contract');
-    test('@ETL/FACT-DAILY-OPERATIONS', './etl/production/fact-daily-operations');
-    test('@ETL/FACT-KANBAN', './etl/production/fact-kanban');
-    test('@ETL/FACT-PACKING', './etl/production/fact-packing');
-    test('@ETL/FACT-QUALITY-CONTROL', './etl/production/fact-fabric-quality-control');
-    test('@ETL/FACT-INVENTORY-MOVEMENT', './etl/inventory/fact-inventory-movement');
-    test('@ETL/FACT-INVENTORY-SUMMARY', './etl/inventory/fact-inventory-summary');
-    test('@ETL/garment-purchase-request', './etl/garment/garment-purchase-request');
-    test('@ETL/FACT-GARMENT-PURCHASING', './etl/garment/purchasing/fact-purchasing');
-    test('@ETL/FACT-FP-PACKING-RECEIPT', './etl/inventory/fact-fp-packing-receipt');
-    test('@ETL/FACT-FP-SHIPMENT-DOCUMENT', './etl/inventory/fact-fp-shipment-document');
-    test('@ETL/FACT-DEAL-TRACKING-BOARD', './etl/sales/fact-deal-tracking-board');
-    test('@ETL/FACT-DEAL-TRACKING-STAGE', './etl/sales/fact-deal-tracking-stage');
-    test('@ETL/FACT-DEAL-TRACKING-DEAL', './etl/sales/fact-deal-tracking-deal');
-    test('@ETL/FACT-DEAL-TRACKING-ACTIVITY', './etl/sales/fact-deal-tracking-activity');
-    test('@ETL/FACT-INSPECTION-LOT-COLOR', './etl/production/fact-inspection-lot-color');
 
     // Master
     test('@MASTER/ACCOUNT-BANK', './master/account-bank');
@@ -85,7 +45,7 @@ describe('#dl-module', function (done) {
 
     // test('@MASTER/MONITORING-EVENT-TYPE', './master/monitoring-event-type');
     test('@MASTER/STEP', './master/step');
-    // test('@MASTER/MACHINE-TYPE', './master/machine-type');
+    test('@MASTER/MACHINE-TYPE', './master/machine-type');
     test('@MASTER/MACHINE-SPESIFICATION-STANDARD', './master/machine-spesification-standard');
     test('@MASTER/MATERIAL-CONSTRUCTION', './master/material-construction');
     test('@MASTER/YARN-MATERIAL', './master/yarn-material');
@@ -119,7 +79,7 @@ describe('#dl-module', function (done) {
 
     //Garmet Purchasing 
     test('@GARMENT PURCHASING/PURCHASE REQUEST', './garment-purchasing/purchase-request');
-    test('@GARMENT PURCHASING/PURCHASE ORDER', './garment-purchasing/purchase-order');
+     test('@GARMENT PURCHASING/PURCHASE ORDER', './garment-purchasing/purchase-order');
     test('@GARMENT PURCHASING/PURCHASE ORDER EXTERNAL', './garment-purchasing/purchase-order-external');
     test('@GARMENT PURCHASING/DELIVERY ORDER', './garment-purchasing/delivery-order');
     test('@GARMENT PURCHASING/CUSTOMS', './garment-purchasing/customs');
@@ -139,6 +99,7 @@ describe('#dl-module', function (done) {
     test('@SALES/DEAL TRACKING STAGE', './sales/deal-tracking-stage');
     test('@SALES/DEAL TRACKING DEAL', './sales/deal-tracking-deal');
     test('@SALES/DEAL TRACKING ACTIVITY', './sales/deal-tracking-activity');
+    test('@SALES/ORDER STATUS HISTORY', './sales/order-status-historical');    
 
     // //Production
     test('@PRODUCTION/FINISHING-PRINTING/KANBAN', './production/finishing-printing/kanban');
@@ -174,6 +135,49 @@ describe('#dl-module', function (done) {
     test('@GARMENT MASTER PLAN/STYLE', './garment-master-plan/style');
     test('@GARMENT MASTER PLAN/STANDARD-HOUR', './garment-master-plan/standard-hour');
     test('@GARMENT MASTER PLAN/MASTER PLAN COMODITY', './garment-master-plan/master-plan-comodity');
-    test('@GARMENT MASTER PLAN/MASTER PLAN', './garment-master-plan/master-plan');
+     test('@GARMENT MASTER PLAN/SEWING-BLOCKING-PLAN', './garment-master-plan/sewing-blocking-plan');
+    test('@GARMENT MASTER PLAN/GARMENT SECTION', './garment-master-plan/garment-section');
+
+     //Etl
+     test('@ETL/DIM-BUYER', './etl/dim/dim-buyer');
+     test('@ETL/DIM-CATEGORY', './etl/dim/dim-category');
+     test('@ETL/DIM-DIVISION', './etl/dim/dim-division');
+     test('@ETL/DIM-SUPPLIER', './etl/dim/dim-supplier');
+     test('@ETL/DIM-MACHINE', './etl/dim/dim-machine');
+     test('@ETL/DIM-UNIT', './etl/dim/dim-unit');
+     test('@ETL/DIM-PROCESS-TYPE', './etl/dim/dim-process-type');
+     test('@ETL/DIM-ORDER-TYPE', './etl/dim/dim-order-type');
+     test('@ETL/DIM-PRODUCT', './etl/dim/dim-product');
+     test('@ETL/DIM-STORAGE', './etl/dim/dim-storage');
+     test('@ETL/DIM-STAFF', './etl/dim/dim-staff');
+     test('@ETL/DIM-COMPANY', './etl/dim/dim-company');
+     test('@ETL/DIM-CONTACT', './etl/dim/dim-contact');
+     test('@ETL/DIM-DURATION-ESTIMATION', './etl/dim/dim-duration-estimation');
+     test('@ETL/DIM-BUDGET', './etl/dim/dim-budget');
+     test('@ETL/DIM-GARMENT-SUPPLIER', './etl/garment/dim/dim-garment-supplier');
+     test('@ETL/FACT-TOTAL-HUTANG', './etl/purchasing/fact-total-hutang');
+     test('@ETL/FACT-PURCHASING', './etl/purchasing/fact-purchasing');
+     test('@ETL/FACT-MONITORING-EVENT', './etl/production/fact-monitoring-event');
+     test('@ETL/FACT-PRODUCTION-ORDER', './etl/production/fact-production-order');
+     test('@ETL/FACT-PRODUCTION-ORDER-STATUS', './etl/sales/fact-production-order-status');
+     test('@ETL/FACT-WEAVING-SALES-CONTRACT', './etl/sales/fact-weaving-sales-contract');
+     test('@ETL/FACT-FINISHING-PRINTING-SALES-CONTRACT', './etl/sales/fact-finishing-printing-sales-contract');
+     test('@ETL/FACT-SPINNING-SALES-CONTRACT', './etl/sales/fact-spinning-sales-contract');
+     test('@ETL/FACT-DAILY-OPERATIONS', './etl/production/fact-daily-operations');
+     test('@ETL/FACT-KANBAN', './etl/production/fact-kanban');
+     test('@ETL/FACT-PACKING', './etl/production/fact-packing');
+     test('@ETL/FACT-QUALITY-CONTROL', './etl/production/fact-fabric-quality-control');
+     test('@ETL/FACT-INVENTORY-MOVEMENT', './etl/inventory/fact-inventory-movement');
+     test('@ETL/FACT-INVENTORY-SUMMARY', './etl/inventory/fact-inventory-summary');
+     test('@ETL/garment-purchase-request', './etl/garment/garment-purchase-request');
+     test('@ETL/FACT-GARMENT-PURCHASING', './etl/garment/purchasing/fact-purchasing');
+     test('@ETL/FACT-GARMENT-TOTAL-HUTANG', './etl/garment/purchasing/fact-total-hutang');
+     test('@ETL/FACT-FP-PACKING-RECEIPT', './etl/inventory/fact-fp-packing-receipt');
+     test('@ETL/FACT-FP-SHIPMENT-DOCUMENT', './etl/inventory/fact-fp-shipment-document');
+     test('@ETL/FACT-DEAL-TRACKING-BOARD', './etl/sales/fact-deal-tracking-board');
+     test('@ETL/FACT-DEAL-TRACKING-STAGE', './etl/sales/fact-deal-tracking-stage');
+     test('@ETL/FACT-DEAL-TRACKING-DEAL', './etl/sales/fact-deal-tracking-deal');
+     test('@ETL/FACT-DEAL-TRACKING-ACTIVITY', './etl/sales/fact-deal-tracking-activity');
+     test('@ETL/FACT-INSPECTION-LOT-COLOR', './etl/production/fact-inspection-lot-color');
 
 });

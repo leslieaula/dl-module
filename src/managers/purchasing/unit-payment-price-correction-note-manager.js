@@ -14,6 +14,8 @@ var generateCode = require('../../utils/code-generator');
 var UnitReceiptNoteManager = require('./unit-receipt-note-manager');
 var moment = require('moment');
 
+const NUMBER_DESCRIPTION="Nota Koreksi";
+
 module.exports = class unitPaymentPriceCorrectionNoteManager extends BaseManager {
     constructor(db, user) {
         super(db, user);
@@ -21,6 +23,7 @@ module.exports = class unitPaymentPriceCorrectionNoteManager extends BaseManager
         this.unitPaymentOrderManager = new UnitPaymentOrderManager(db, user);
         this.purchaseOrderManager = new PurchaseOrderManager(db, user);
         this.unitReceiptNoteManager = new UnitReceiptNoteManager(db, user);
+        this.documentNumbers = this.db.collection("document-numbers");
     }
 
 getDataKoreksiHarga(query){
@@ -354,11 +357,76 @@ getDataKoreksiHarga(query){
         });
     }
 
+    pad(number, length) {
+
+        var str = '' + number;
+        while (str.length < length) {
+            str = '0' + str;
+        }
+
+        return str;
+    }
+
     _beforeInsert(unitPaymentPriceCorrectionNote) {
-        unitPaymentPriceCorrectionNote.no = generateCode("correctionQuantity");
-        if (unitPaymentPriceCorrectionNote.unitPaymentOrder.useIncomeTax)
-            unitPaymentPriceCorrectionNote.returNoteNo = generateCode("returCode");
-        return Promise.resolve(unitPaymentPriceCorrectionNote)
+        var monthNow = moment(unitPaymentPriceCorrectionNote.date).format("MM");
+        var yearNow = parseInt(moment(unitPaymentPriceCorrectionNote.date).format("YY"));
+        var code="";
+        // var unitCode=unitPaymentPriceCorrectionNote.unitPaymentOrder ? unitPaymentPriceCorrectionNote.unitPaymentOrder.division.code : "";
+        if(unitPaymentPriceCorrectionNote && unitPaymentPriceCorrectionNote.unitPaymentOrder){
+            code= unitPaymentPriceCorrectionNote.unitPaymentOrder.supplier.import ? "NRI" : "NRL";
+        }
+        var division="";
+        if(unitPaymentPriceCorrectionNote.unitPaymentOrder && unitPaymentPriceCorrectionNote.unitPaymentOrder.division){
+            if(unitPaymentPriceCorrectionNote.unitPaymentOrder.division.name=="GARMENT"){
+                division="-G";
+            }
+            else if(unitPaymentPriceCorrectionNote.unitPaymentOrder.division.name=="UMUM" || unitPaymentPriceCorrectionNote.unitPaymentOrder.division.name=="SPINNING" || unitPaymentPriceCorrectionNote.unitPaymentOrder.division.name=="FINISHING & PRINTING" || unitPaymentPriceCorrectionNote.unitPaymentOrder.division.name=="UTILITY"|| unitPaymentPriceCorrectionNote.unitPaymentOrder.division.name=="WEAVING"){
+                division="-T";
+            }
+        }
+        var type = code+monthNow+yearNow+division;
+        var query = { "type": type, "description": NUMBER_DESCRIPTION };
+        var fields = { "number": 1, "year": 1 };
+
+        return this.documentNumbers
+            .findOne(query, fields)
+            .then((previousDocumentNumber) => {
+
+                var number = 1;
+
+                if (!unitPaymentPriceCorrectionNote.no) {
+                    if (previousDocumentNumber) {
+                        var oldYear = previousDocumentNumber.year;
+                        number = yearNow > oldYear ? number : previousDocumentNumber.number + 1;
+
+                        unitPaymentPriceCorrectionNote.no = `${yearNow}-${monthNow}${division}-${code}-${this.pad(number, 4)}`;
+                    } else {
+                        unitPaymentPriceCorrectionNote.no = `${yearNow}-${monthNow}${division}-${code}-0001`;
+                    }
+                }
+
+                var documentNumbersData = {
+                    type: type,
+                    documentNumber: unitPaymentPriceCorrectionNote.no,
+                    number: number,
+                    year: yearNow,
+                    description: NUMBER_DESCRIPTION
+                };
+
+                var options = { "upsert": true };
+
+                return this.documentNumbers
+                    .updateOne(query, documentNumbersData, options)
+                    .then((id) => {
+                        if (unitPaymentPriceCorrectionNote.unitPaymentOrder.useIncomeTax)
+                             unitPaymentPriceCorrectionNote.returNoteNo = generateCode("returCode");
+                        return Promise.resolve(unitPaymentPriceCorrectionNote);
+                    })
+            })
+        // unitPaymentPriceCorrectionNote.no = generateCode("correctionQuantity");
+        // if (unitPaymentPriceCorrectionNote.unitPaymentOrder.useIncomeTax)
+        //     unitPaymentPriceCorrectionNote.returNoteNo = generateCode("returCode");
+        // return Promise.resolve(unitPaymentPriceCorrectionNote)
     }
 
     _afterInsert(id) {
@@ -571,6 +639,7 @@ getXls(result, query){
              item["NO PURCHASE REQUEST"] = corhrg.items.purchaseOrder.purchaseRequest? corhrg.items.purchaseOrder.purchaseRequest.no : '';
              item["FAKTUR PAJAK PPN"] = corhrg.incomeTaxCorrectionNo? corhrg.incomeTaxCorrectionNo : '';
              item["TANGGAL FAKTUR PAJAK PPN"] = corhrg.incomeTaxCorrectionDate? moment(new Date(corhrg.incomeTaxCorrectionDate)).format(dateFormat) : '';
+              item["CODE SUPPLIER"] = corhrg.unitPaymentOrder.supplier? corhrg.unitPaymentOrder.supplier.code : '';
              item["SUPPLIER"] = corhrg.unitPaymentOrder.supplier? corhrg.unitPaymentOrder.supplier.name : '';
              item["JENIS KOREKSI"] = corhrg.correctionType? corhrg.correctionType : '';
              item["KODE"] = corhrg.items.product? corhrg.items.product.code : '';
@@ -594,7 +663,16 @@ getXls(result, query){
              item["HARGA SATUAN"] = harga;
              item["HARGA TOTAL"] = total;
              item["USER INPUT"] = corhrg._createdBy? corhrg._createdBy : '';
-
+             item["MATA UANG"] = corhrg.items.currency? corhrg.items.currency.code : '';
+             item["KATEGORI"] = corhrg.unitPaymentOrder.category? corhrg.unitPaymentOrder.category.name : '';
+                 if(corhrg.useIncomeTax==true){
+                    var z =( (corhrg.items.quantity * corhrg.items.pricePerUnit)/10).toFixed(2).toString().split('.'); 
+                    var z1=z[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+                    var ppn= z1 + '.' + z[1];
+                    item["PPN"] =ppn;
+                    }else{
+                    item["PPN"] =0;
+                    }
              xls.data.push(item);
          }
 
@@ -606,6 +684,7 @@ getXls(result, query){
          xls.options["NO PURCHASE REQUEST"] = "string";
          xls.options["FAKTUR PAJAK PPN"] = "string";
          xls.options["TANGGAL FAKTUR PAJAK PPN"] = "string";
+         xls.options["CODE SUPPLIER"] = "string";
          xls.options["SUPPLIER"] = "string";
          xls.options["JENIS KOREKSI"] = "string";
          xls.options["KODE"] = "string";
@@ -615,7 +694,9 @@ getXls(result, query){
          xls.options["HARGA SATUAN"] = "number";
          xls.options["HARGA TOTAL"] = "number";
          xls.options["USER INPUT"] = "string";
-
+         xls.options["MATA UANG"] = "string";
+         xls.options["KATEGORI"] = "string";
+         xls.options["PPN"] = "number";
          if(query.dateFrom && query.dateTo){
              xls.name = `Monitoring Koreksi Harga ${moment(new Date(query.dateFrom)).format(dateFormat)} - ${moment(new Date(query.dateTo)).format(dateFormat)}.xlsx`;
          }

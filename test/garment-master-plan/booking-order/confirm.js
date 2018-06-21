@@ -9,9 +9,9 @@ var dataUtil =require("../../data-util/garment-master-plan/booking-order-data-ut
 var validate = require("dl-models").validator.garmentMasterPlan.bookingOrder;
 
 
-var ManagerPlan = require("../../../src/managers/garment-master-plan/master-plan-manager");
+var ManagerPlan = require("../../../src/managers/garment-master-plan/sewing-blocking-plan-manager");
 var managerPlan = null;
-var dataUtilPlan =require("../../data-util/garment-master-plan/master-plan-data-util");
+var dataUtilPlan =require("../../data-util/garment-master-plan/sewing-blocking-plan-data-util");
 var validatePlan = require("dl-models").validator.garmentMasterPlan.masterPlan;
 
 var moment = require('moment');
@@ -100,11 +100,13 @@ it("#03. should error when confirm created data without data items", function (d
                 });
 });
 
+//item.deliveryDate>data.deliveryDate
 it("#04. should error when confirm created data with deliveryDate items more than deliveryDate", function (done) {
     createdData.type='confirm';
     var today=new Date();
-    createdData.deliveryDate=new Date(today.setDate(today.getDate() + 10));
-    createdData.items[0].deliveryDate=new Date(createdData.deliveryDate.setDate(createdData.deliveryDate.getDate() + 10));
+    //createdData.deliveryDate=new Date(today.setDate(today.getDate() + 10));
+    var date=new Date(createdData.deliveryDate);
+    createdData.items[0].deliveryDate=new Date(date.setDate(date.getDate() + 10));
         manager.update(createdData)
             .then((id) => {
                     done("should error when confirm created data with deliveryDate items more than deliveryDate");
@@ -135,26 +137,27 @@ it("#05. should error when confirm created data with deliveryDate items less tha
                 });
 });
 
-it("#06. should error when confirm created data with quantity items more than orderQuantity", function (done) {
-    createdData.type='confirm';
-    createdData.items[0].quantity=10000;
-        manager.update(createdData)
-            .then((id) => {
-                    done("should error when confirm created data with quantity items more than orderQuantity");
-                })
-                .catch((e) => {
-                    e.name.should.equal("ValidationError");
-                    e.should.have.property("errors");
-                    e.errors.should.instanceof(Object);
-                    e.errors.should.have.property("items");
-                    done();
-                });
-});
+// it("#06. should error when confirm created data with quantity items more than orderQuantity", function (done) {
+//     createdData.type='confirm';
+//     createdData.items[0].quantity=10000;
+//         manager.update(createdData)
+//             .then((id) => {
+//                     done("should error when confirm created data with quantity items more than orderQuantity");
+//                 })
+//                 .catch((e) => {
+//                     e.name.should.equal("ValidationError");
+//                     e.should.have.property("errors");
+//                     e.errors.should.instanceof(Object);
+//                     e.errors.should.have.property("items");
+//                     done();
+//                 });
+// });
 
-it("#07. should error when confirm created data with deliveryDate items less than booking date", function (done) {
+it("#06. should error when confirm created data with deliveryDate items less than booking date", function (done) {
     createdData.type='confirm';
-    var today=new Date(createdData.bookingDate);
-    createdData.items[0].deliveryDate=new Date(today.setDate(today.getDate() - 10));
+    //var today=new Date(createdData.bookingDate);
+    var date=new Date(createdData.bookingDate.setDate(createdData.bookingDate.getDate() + 10));
+    createdData.items[0].deliveryDate=new Date(date.setDate(date.getDate() - 10));
         manager.update(createdData)
             .then((id) => {
                     done("should error when confirm created data with deliveryDate items less than booking date");
@@ -168,18 +171,51 @@ it("#07. should error when confirm created data with deliveryDate items less tha
                 });
 });
 
-it("#08. should error when confirm created data without data items", function (done) {
+it("#07. should error when confirm data with deliveryDate item is null", function (done){
     createdData.type='confirm';
-    createdData.items = [];
-        manager.update(createdData)
-            .then((id) => {
-                    done("should error when confirm created data without data items");
-                })
-                .catch((e) => {
-                    e.name.should.equal("ValidationError");
-                    e.should.have.property("errors");
-                    e.errors.should.instanceof(Object);
-                    e.errors.should.have.property("detail");
-                    done();
-                });
+    var date=new Date();
+    createdData.items[0].deliveryDate=null;          
+    manager.update(createdData)
+        .then((id) => {
+            done("should error when confirm data with deliveryDate item is null");
+        })
+        .catch((e) => {
+            e.name.should.equal("ValidationError");
+            e.should.have.property("errors");
+            e.errors.should.instanceof(Object);
+            e.errors.should.have.property("items");
+            done();
+            });
+});
+
+// it("#08. should error when confirm created data without data items", function (done) {
+//     createdData.type='confirm';
+//     createdData.items = [];
+//         manager.update(createdData)
+//             .then((id) => {
+//                     done("should error when confirm created data without data items");
+//                 })
+//                 .catch((e) => {
+//                     e.name.should.equal("ValidationError");
+//                     e.should.have.property("errors");
+//                     e.errors.should.instanceof(Object);
+//                     e.errors.should.have.property("detail");
+//                     done();
+//                 });
+// });
+
+it("#09. should success when search data with filter", function (done) {
+    manager.read({
+        keyword: createdData.garmentBuyerName
+    })
+        .then((documents) => {
+            //process documents
+            documents.should.have.property("data");
+            documents.data.should.be.instanceof(Array);
+            documents.data.length.should.not.equal(0);
+            done();
+        })
+        .catch((e) => {
+            done(e);
+        });
 });

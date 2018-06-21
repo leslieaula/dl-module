@@ -80,7 +80,6 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             "items.conversion",
             "items.isPosted",
             "items.isClosed",
-
         ];
     }
 
@@ -290,6 +289,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
 
                     var query = Object.assign({});
                     var queryCategory = Object.assign({});
+                    var queryMatchItems = Object.assign({});
 
                     if (category === "FABRIC") {
                         queryCategory = {
@@ -325,7 +325,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                             if (_keyword) {
                                 _keyword = _keyword.replace("(", "\\(");
                                 _keyword = _keyword.replace(")", "\\)");
-                                var regex = new RegExp(_keyword, "i");
+                                var regex = new RegExp(_keyword,"i");
                                 switch (j) {
                                     case 0:
                                         keywordFilters.push({
@@ -341,6 +341,13 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                             }
                                         });
                                         break;
+                                    case 2:
+                                        queryMatchItems = Object.assign(queryMatchItems, {
+                                            "items.category.name": {
+                                                "$regex": regex
+                                            }
+                                        });
+                                        break;                                           
                                 }
                             }
                         }
@@ -354,6 +361,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                         "purchaseRequest.no": 1,
                         "purchaseRequest._id": 1,
                         "roNo": 1,
+                        "artikel":1,
                         "isPosted": 1,
                         "isUsed": 1,
                         "_createdBy": 1,
@@ -373,7 +381,8 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                         "items.remark": "$items.remark"
                     };
 
-                    var qryMatch = [{ $match: query }, { $unwind: "$items" }, { $match: queryCategory }, { $project: _select }];
+                    var _sort = { "items.refNo" : 1 };
+                    var qryMatch = [{ $match: query }, { $unwind: "$items" }, { $match: queryCategory }, { $match: queryMatchItems }, { $project: _select}, { $sort: _sort}];
 
                     var queryDate = Object.assign({});
                     if (shipmentDateFrom && shipmentDateTo) {
@@ -530,7 +539,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             .then((createIndexResults) => {
                 return this._validate(purchaseOrder)
                     .then(validData => {
-                        return this.collection.updateOne({ _id: validData._id }, { $set: { "_deleted": true } })
+                        return this.collection.updateOne({ _id: validData._id }, { $set: { "_deleted": true, "_updatedDate": new Date() } })
                             .then((result) => Promise.resolve(validData._id))
                             .then((purchaseOrderId) => {
                                 return this.purchaseRequestManager.getSingleById(validData.purchaseRequest._id)
@@ -603,7 +612,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     for (var item of splittedPurchaseOrder.items) {
                                         var sourceItem = sourcePurchaseOrder.items.find((_sourceItem) => item.product._id.toString() === _sourceItem.product._id.toString());
                                         if (sourceItem) {
-                                            sourceItem.defaultQuantity = sourceItem.defaultQuantity - item.defaultQuantity;
+                                            sourceItem.defaultQuantity = parseFloat((sourceItem.defaultQuantity - item.defaultQuantity).toFixed(2));
                                         }
                                     }
                                     sourcePurchaseOrder.items = sourcePurchaseOrder.items.filter((item, index) => {
@@ -825,8 +834,11 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             });
         }
         if (info.purchaseOrderExternalNo && info.purchaseOrderExternalNo !== "") {
+            var regexPO = new RegExp(info.purchaseOrderExternalNo, "i");
             Object.assign(query, {
-                "items.purchaseOrderExternal.no": info.purchaseOrderExternalNo
+                "items.purchaseOrderExternal.no": {
+                    '$regex': regexPO
+                }
             });
         }
         if (info.supplierId && info.supplierId !== "") {
@@ -846,6 +858,19 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             Object.assign(query, {
                 "items.refNo": info.prRefNo
             });
+        }
+        if (info.roNo && info.roNo !== "") {
+            Object.assign(query, {
+                roNo: info.roNo
+            });
+        }
+        if (info.deliveryOrderNo && info.deliveryOrderNo !== "") {
+            var regexDO = new RegExp(info.deliveryOrderNo, "i");
+            Object.assign(query, {
+                "items.fulfillments.deliveryOrderNo": {
+                    '$regex': regexDO
+                }
+            })
         }
 
         var offset = Number(info.offset) || 7;
@@ -936,17 +961,20 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "unit.division.name": 1,
                                         "refNo": "$items.refNo",
                                         "roNo": "$roNo",
+                                        "buyer.code": "$buyer.code",
+                                        "buyer.name": "$buyer.name",
                                         "purchaseRequest.shipmentDate": "$purchaseRequest.shipmentDate",
                                         "artikel": "$artikel",
                                         "product.name": "$items.product.name",
                                         "product.code": "$items.product.code",
-                                        "product.description": "$items.product.description",
+                                        "product.description": "$items.remark",
                                         "category": "$items.category.name",
                                         "defaultQuantity": "$items.defaultQuantity",
                                         "defaultUom": "$items.defaultUom.unit",
                                         "budgetPrice": "$items.budgetPrice",
                                         "currencyRate": "$items.currency.rate",
                                         "dealQuantity": "$items.dealQuantity",
+                                        "currency": "$items.currency.code",
                                         "dealUom": "$items.dealUom.unit",
                                         "pricePerDealUnit": "$items.pricePerDealUnit",
                                         "supplier.name": "$items.supplier.name",
@@ -955,6 +983,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "poeNo": "$items.purchaseOrderExternal.no",
                                         "poeDate": "$items.purchaseOrderExternal.date",
                                         "poeExpectedDeliveryDate": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                                        "usePPN": "$items.purchaseOrderExternal.useIncomeTax",
+                                        "usePPH": "$items.purchaseOrderExternal.useVat",
+                                        "vatRate": "$items.purchaseOrderExternal.vatRate",
                                         "status": 1,
                                         "fulfillments": "$items.fulfillments",
                                         "fulfillmentsTotal": "$items.fulfillments.deliveryOrderDeliveredQuantity",
@@ -973,6 +1004,8 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "unit.division.name": 1,
                                         "refNo": 1,
                                         "roNo": 1,
+                                        "buyer.code": 1,
+                                        "buyer.name": 1,
                                         "purchaseRequest.shipmentDate": 1,
                                         "artikel": 1,
                                         "product.name": 1,
@@ -984,6 +1017,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "budgetPrice": 1,
                                         "currencyRate": 1,
                                         "dealQuantity": 1,
+                                        "currency": 1,
                                         "dealUom": 1,
                                         "pricePerDealUnit": 1,
                                         "supplier.name": 1,
@@ -992,6 +1026,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "poeNo": 1,
                                         "poeDate": 1,
                                         "poeExpectedDeliveryDate": 1,
+                                        "usePPN": 1,
+                                        "usePPH": 1,
+                                        "vatRate": 1,
                                         "status": 1,
                                         "fulfillment": "$fulfillments",
                                         "fulfillmentsTotal": 1,
@@ -999,6 +1036,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "remark": 1
                                     }
                                 },
+                                 { $sort : { "refNo" : 1 } }
                             ])
                             .toArray()
                     );
@@ -1020,17 +1058,20 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "unit.division.name": 1,
                                     "refNo": "$items.refNo",
                                     "roNo": "$roNo",
+                                    "buyer.code": "$buyer.code",
+                                    "buyer.name": "$buyer.name",
                                     "purchaseRequest.shipmentDate": "$purchaseRequest.shipmentDate",
                                     "artikel": "$artikel",
                                     "product.name": "$items.product.name",
                                     "product.code": "$items.product.code",
-                                    "product.description": "$items.product.description",
+                                    "product.description": "$items.remark",
                                     "category": "$items.category.name",
                                     "defaultQuantity": "$items.defaultQuantity",
                                     "defaultUom": "$items.defaultUom.unit",
                                     "budgetPrice": "$items.budgetPrice",
                                     "currencyRate": "$items.currency.rate",
                                     "dealQuantity": "$items.dealQuantity",
+                                    "currency": "$items.currency.code",
                                     "dealUom": "$items.dealUom.unit",
                                     "pricePerDealUnit": "$items.pricePerDealUnit",
                                     "supplier.name": "$items.supplier.name",
@@ -1039,6 +1080,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "poeNo": "$items.purchaseOrderExternal.no",
                                     "poeDate": "$items.purchaseOrderExternal.date",
                                     "poeExpectedDeliveryDate": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                                    "usePPN": "$items.purchaseOrderExternal.useIncomeTax",
+                                    "usePPH": "$items.purchaseOrderExternal.useVat",
+                                    "vatRate": "$items.purchaseOrderExternal.vatRate",
                                     "status": 1,
                                     "fulfillments": "$items.fulfillments",
                                     "fulfillmentsTotal": "$items.fulfillments.deliveryOrderDeliveredQuantity",
@@ -1057,6 +1101,8 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "unit.division.name": 1,
                                     "refNo": 1,
                                     "roNo": 1,
+                                    "buyer.code": 1,
+                                    "buyer.name": 1,
                                     "purchaseRequest.shipmentDate": 1,
                                     "artikel": 1,
                                     "product.name": 1,
@@ -1068,6 +1114,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "budgetPrice": 1,
                                     "currencyRate": 1,
                                     "dealQuantity": 1,
+                                    "currency": 1,
                                     "dealUom": 1,
                                     "pricePerDealUnit": 1,
                                     "supplier.name": 1,
@@ -1076,6 +1123,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "poeNo": 1,
                                     "poeDate": 1,
                                     "poeExpectedDeliveryDate": 1,
+                                    "usePPN": 1,
+                                    "usePPH": 1,
+                                    "vatRate": 1,
                                     "status": 1,
                                     "fulfillment": "$fulfillments",
                                     "fulfillmentsTotal": 1,
@@ -1083,6 +1133,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "remark": 1
                                 }
                             },
+                            { $sort : { "refNo" : 1 } },
                             { $skip: page * size },
                             { $limit: size }
                         ])
@@ -1104,7 +1155,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                     var remainQuantity = 0;
                     var sum = 0;
 
-                    if (data.arrayIndex != null && data.arrayIndex >= 0) {
+                    if (data.arrayIndex || data.arrayIndex >= 0) {
                         sum = 0;
                         for (var i = 0; i <= data.arrayIndex; i++) {
                             sum += data.fulfillmentsTotal[i];
@@ -1143,6 +1194,12 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                     } else {
                         data.correction = {};
                     }
+                    if (!data.supplier) {
+                        data.supplier = {
+                            code: "",
+                            name: ""
+                        }
+                    }
                     index++;
                     var item = {
                         no: index,
@@ -1152,7 +1209,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                         division: data.unit.division.name,
                         refNo: data.refNo,
                         roNo: data.roNo,
-                        shipmentDate: data.purchaseRequest.shipmentDate ? moment(new Date(data.purchaseRequest.shipmentDate)).add(offset, 'h').format(dateFormat) : "-",
+                        buyerCode: data.buyer.code,
+                        buyerName: data.buyer.name,                        
+                        shipmentDate: data.purchaseRequest.shipmentDate ? moment(new Date(data.purchaseRequest.shipmentDate)).add(offset, 'h').format(dateFormat): "-",
                         artikel: data.artikel,
                         category: data.category,
                         productName: data.product.name,
@@ -1160,15 +1219,23 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                         productDesc: data.product.description,
                         defaultQuantity: data.defaultQuantity ? data.defaultQuantity : 0,
                         defaultUom: data.defaultUom ? data.defaultUom : "-",
-                        budgetPrice: data.budgetPrice * data.currencyRate,
-                        pricePerItem: data.pricePerDealUnit * data.currencyRate,
-                        priceTotal: data.pricePerDealUnit * data.dealQuantity * data.currencyRate,
+                        dealUom: data.dealUom ? data.dealUom : "-",
+                        budgetPrice: data.budgetPrice,
+                        pricePerItem: data.pricePerDealUnit,
+                        priceTotal: data.pricePerDealUnit * data.dealQuantity,
+                        priceTtl: data.pricePerDealUnit * data.dealQuantity * data.currencyRate,
+                        currencyRate: data.currencyRate,
                         supplierCode: data.supplier.code,
                         supplierName: data.supplier.name,
                         poIntCreatedDate: data._createdDate ? moment(new Date(data._createdDate)).add(offset, 'h').format(dateFormat) : "-",
                         poExtNo: data.poeNo,
                         poExtDate: data.poeDate ? moment(new Date(data.poeDate)).add(offset, 'h').format(dateFormat) : "-",
                         poExtExpectedDeliveryDate: data.poeExpectedDeliveryDate ? moment(new Date(data.poeExpectedDeliveryDate)).add(offset, 'h').format(dateFormat) : "-",
+                        poExtPPN: data.usePPN ? "Ya" : "Tidak",
+                        poExtPPH: data.usePPH ? "Ya" : "Tidak",
+                        poExtVat: data.vatRate ? data.vatRate : "-",
+                        dealQuantity: data.dealQuantity ? data.dealQuantity : 0,
+                        currency: data.currency,
                         deliveryOrderNo: data.fulfillment ? data.fulfillment.deliveryOrderNo ? data.fulfillment.deliveryOrderNo : "-" : "-",
                         deliveryOrderUseCustoms: data.fulfillment ? data.fulfillment.deliveryOrderUseCustoms ? data.fulfillment.deliveryOrderUseCustoms : false : false,
                         supplierDoDate: data.fulfillment ? data.fulfillment.supplierDoDate ? moment(new Date(data.fulfillment.supplierDoDate)).add(offset, 'h').format(dateFormat) : "-" : "-",
@@ -1230,62 +1297,70 @@ module.exports = class PurchaseOrderManager extends BaseManager {
 
         for (var data of results.data) {
             var item = {
-                "Nomor": data.no,
+                "No": data.no,
                 "Tanggal Purchase Request": data.prDate,
-                "Nomor Purchase Request": data.prNo,
+                "No Purchase Request": data.prNo,
                 "Unit": data.unit,
                 "Divisi": data.division,
-                "Nomor Ref Purchase Request": data.refNo,
-                "Nomor RO": data.roNo,
+                "No Ref Purchase Request": data.refNo,
+                "No RO": data.roNo,
+                "Buyer": data.buyerCode,
+                "Nama Buyer": data.buyerName,
                 "Shipment Garment": data.shipmentDate,
                 "Artikel": data.artikel,
                 "Kategori": data.category,
                 "Nama Barang": data.productName,
                 "Kode Barang": data.productCode,
                 "Keterangan Barang": data.productDesc,
-                "Jumlah Barang": data.defaultQuantity,
-                "Satuan Barang": data.defaultUom,
+                "Jumlah Barang": data.dealQuantity,
+                "Satuan Barang": data.dealUom,
                 "Harga Budget": data.budgetPrice,
                 "Harga Satuan Beli": data.pricePerItem,
                 "Harga Total": data.priceTotal,
+                "Mata Uang": data.currency,
+                "Kurs": data.currencyRate,
+                "Harga Total Rp": data.priceTtl,
                 "Kode Supplier": data.supplierCode,
                 "Nama Supplier": data.supplierName,
                 "Tanggal Terima PO Internal": data.poIntCreatedDate,
-                "Nomor PO Eksternal": data.poExtNo,
+                "No PO Eksternal": data.poExtNo,
                 "Tanggal PO Eksternal": data.poExtDate,
                 "Tanggal Target Datang": data.poExtExpectedDeliveryDate,
-                "Nomor Surat Jalan": data.deliveryOrderNo,
+                "Dikenakan PPN": data.poExtPPN,
+                "Dikenakan PPH": data.poExtPPH,
+                "PPH": data.poExtVat,
+                "No Surat Jalan": data.deliveryOrderNo,
                 "Dikenakan Bea Cukai": data.deliveryOrderUseCustoms ? "Ya" : "Tidak",
                 "Tanggal Surat Jalan": data.supplierDoDate,
                 "Tanggal Datang Barang": data.deliveryOrderDate,
                 "Jumlah Barang Datang": data.deliveryOrderDeliveredQuantity,
-                "Satuan": data.defaultUom,
+                "Satuan": data.dealUom,
                 "Jumlah Barang Sisa": data.remainQuantity,
-                "Nomor Bea Cukai": data.customsNo,
+                "No Bea Cukai": data.customsNo,
                 "Tanggal Bea Cukai": data.customsDate,
-                "Nomor Bon Terima Unit": data.unitReceiptNoteNo,
+                "No Bon Terima Unit": data.unitReceiptNoteNo,
                 "Tanggal Bon Terima Unit": data.unitReceiptNoteDate,
                 "Jumlah Barang Diterima": data.unitReceiptNoteDeliveredQuantity,
                 "Satuan Barang Diterima": data.unitReceiptDeliveredUom,
-                "Nomor Invoice": data.invoiceNo,
+                "No Invoice": data.invoiceNo,
                 "Tanggal Invoice": data.invoiceDate,
                 "Dikenakan PPN": data.invoiceUseIncomeTax ? "Ya" : "Tidak",
-                "Nomor PPN": data.invoiceIncomeTaxNo,
+                "No PPN": data.invoiceIncomeTaxNo,
                 "Tanggal PPN": data.invoiceIncomeTaxDate,
                 "Nilai PPN": data.incomeValue,
                 "Dikenakan PPH": data.invoiceUseVat ? "Ya" : "Tidak",
                 "Jenis PPH": data.invoiceVat,
-                "Nomor PPH": data.invoiceVatNo,
+                "No PPH": data.invoiceVatNo,
                 "Tanggal PPH": data.invoiceVatDate,
                 "Nilai PPH": data.vatValue,
-                "Nomor Nota Intern": data.interNoteNo,
+                "No Nota Intern": data.interNoteNo,
                 "Tanggal Nota Intern": data.interNoteDate,
                 "Nilai Nota Intern": data.interNoteValue,
                 "Tanggal Jatuh Tempo": data.interNoteDueDate,
-                "Nomor Koreksi": data.correctionNo,
+                "No Koreksi": data.correctionNo,
                 "Tanggal Koreksi": data.correctionDate,
                 "Nilai Koreksi": data.correctionPriceTotal,
-                "Keterangan Koreksi": data.correctionRemark,
+                "Ket Koreksi": data.correctionRemark,
                 "Keterangan": data.remark,
                 "Status": data.status
             }
@@ -1293,13 +1368,13 @@ module.exports = class PurchaseOrderManager extends BaseManager {
         }
 
         var options = {
-            "Nomor": "number",
+            "No": "number",
             "Tanggal Purchase Request": "string",
-            "Nomor Purchase Request": "string",
+            "No Purchase Request": "string",
             "Unit": "string",
             "Divisi": "string",
-            "Nomor Ref Purchase Request": "string",
-            "Nomor RO": "string",
+            "No Ref Purchase Request": "string",
+            "No RO": "string",
             "Shipment Garment": "string",
             "Artikel": "string",
             "Kategori": "string",
@@ -1310,44 +1385,50 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             "Satuan Barang": "string",
             "Harga Barang": "number",
             "Harga Total": "number",
+            "Mata Uang": "string",
+            "Kurs": "number",
+            "Harga Total Rp": "number",
             "Kode Supplier": "string",
             "Nama Supplier": "string",
             "Tanggal Terima PO Internal": "string",
-            "Nomor PO Eksternal": "string",
+            "No PO Eksternal": "string",
             "Tanggal PO Eksternal": "string",
             "Tanggal Target Datang": "string",
-            "Nomor Surat Jalan": "string",
+            "Dikenakan PPN": "string",
+            "Dikenakan PPH": "string",
+            "PPH": "string",
+            "No Surat Jalan": "string",
             "Dikenakan Bea Cukai": "string",
             "Tanggal Surat Jalan": "string",
             "Tanggal Datang Barang": "string",
             "Jumlah Barang Datang": "number",
             "Satuan": "string",
             "Jumlah Barang Sisa": "string",
-            "Nomor Bea Cukai": "string",
+            "No Bea Cukai": "string",
             "Tanggal Bea Cukai": "string",
-            "Nomor Bon Terima Unit": "string",
+            "No Bon Terima Unit": "string",
             "Tanggal Bon Terima Unit": "string",
             "Jumlah Barang Diterima": "number",
             "Satuan Barang Diterima": "string",
-            "Nomor Invoice": "string",
+            "No Invoice": "string",
             "Tanggal Invoice": "string",
             "Dikenakan PPN": "string",
-            "Nomor PPN": "string",
+            "No PPN": "string",
             "Tanggal PPN": "string",
             "Nilai PPN": "number",
             "Dikenakan PPH": "string",
             "Jenis PPH": "string",
-            "Nomor PPH": "string",
+            "No PPH": "string",
             "Tanggal PPH": "string",
             "Nilai PPH": "number",
-            "Nomor Nota Intern": "string",
+            "No Nota Intern": "string",
             "Tanggal Nota Intern": "string",
             "Nilai Nota Intern": "string",
             "Tanggal Jatuh Tempo": "string",
-            "Nomor Koreksi": "string",
+            "No Koreksi": "string",
             "Tanggal Koreksi": "string",
             "Nilai Koreksi": "string",
-            "Keterangan Koreksi": "string",
+            "Ket Koreksi": "string",
             "Keterangan": "string",
             "Status": "string"
         };
@@ -1380,9 +1461,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                 "status.value": info.state
             });
         }
-        if (info.user && info.user !== "") {
-            Object.assign(query, {
-                "_createdBy": info.user.username
+        if (info.user && info.user !== "" ) {
+            Object.assign(query, {      
+                "_createdBy": info.user
             });
         }
         if (info.unitId && info.unitId !== "") {
@@ -1396,8 +1477,11 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             });
         }
         if (info.purchaseOrderExternalNo && info.purchaseOrderExternalNo !== "") {
+            var regexPOExt = new RegExp(info.purchaseOrderExternalNo, "i");
             Object.assign(query, {
-                "items.purchaseOrderExternal.no": info.purchaseOrderExternalNo
+                "items.purchaseOrderExternal.no": {
+                    '$regex': regexPOExt
+                }
             });
         }
         if (info.supplierId && info.supplierId !== "") {
@@ -1417,6 +1501,19 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             Object.assign(query, {
                 "items.refNo": info.prRefNo
             });
+        }
+        if (info.roNo && info.roNo !== "") {
+            Object.assign(query, {
+                "roNo": info.roNo
+            });
+        }
+        if (info.deliveryOrderNo && info.deliveryOrderNo !== "") {
+            var regexSJ = new RegExp(info.deliveryOrderNo, "i");
+            Object.assign(query, {
+                "items.fulfillments.deliveryOrderNo": {
+                    '$regex': regexSJ
+                }
+            })
         }
 
         var offset = Number(info.offset) || 7;
@@ -1507,17 +1604,20 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "unit.division.name": 1,
                                         "refNo": "$items.refNo",
                                         "roNo": "$roNo",
+                                        "buyer.code": "$buyer.code",
+                                        "buyer.name": "$buyer.name",
                                         "purchaseRequest.shipmentDate": "$purchaseRequest.shipmentDate",
                                         "artikel": "$artikel",
                                         "product.name": "$items.product.name",
                                         "product.code": "$items.product.code",
-                                        "product.description": "$items.product.description",
+                                        "product.description": "$items.remark",
                                         "category": "$items.category.name",
                                         "defaultQuantity": "$items.defaultQuantity",
                                         "defaultUom": "$items.defaultUom.unit",
                                         "budgetPrice": "$items.budgetPrice",
                                         "currencyRate": "$items.currency.rate",
                                         "dealQuantity": "$items.dealQuantity",
+                                        "currency": "$items.currency.code",
                                         "dealUom": "$items.dealUom.unit",
                                         "pricePerDealUnit": "$items.pricePerDealUnit",
                                         "supplier.name": "$items.supplier.name",
@@ -1526,6 +1626,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "poeNo": "$items.purchaseOrderExternal.no",
                                         "poeDate": "$items.purchaseOrderExternal.date",
                                         "poeExpectedDeliveryDate": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                                        "usePPN": "$items.purchaseOrderExternal.useIncomeTax",
+                                        "usePPH": "$items.purchaseOrderExternal.useVat",
+                                        "vatRate": "$items.purchaseOrderExternal.vatRate",
                                         "status": 1,
                                         "fulfillments": "$items.fulfillments",
                                         "fulfillmentsTotal": "$items.fulfillments.deliveryOrderDeliveredQuantity",
@@ -1545,6 +1648,8 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "unit.division.name": 1,
                                         "refNo": 1,
                                         "roNo": 1,
+                                        "buyer.code": 1,
+                                        "buyer.name": 1,
                                         "purchaseRequest.shipmentDate": 1,
                                         "artikel": 1,
                                         "product.name": 1,
@@ -1556,6 +1661,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "budgetPrice": 1,
                                         "currencyRate": 1,
                                         "dealQuantity": 1,
+                                        "currency": 1,
                                         "dealUom": 1,
                                         "pricePerDealUnit": 1,
                                         "supplier.name": 1,
@@ -1564,6 +1670,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "poeNo": 1,
                                         "poeDate": 1,
                                         "poeExpectedDeliveryDate": 1,
+                                        "usePPN": 1,
+                                        "usePPH": 1,
+                                        "vatRate": 1,
                                         "status": 1,
                                         "fulfillment": "$fulfillments",
                                         "fulfillmentsTotal": 1,
@@ -1572,6 +1681,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                         "_createdBy": 1
                                     }
                                 },
+                                { $sort : { "refNo" : 1 } }
                             ])
                             .toArray()
                     );
@@ -1593,17 +1703,20 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "unit.division.name": 1,
                                     "refNo": "$items.refNo",
                                     "roNo": "$roNo",
+                                    "buyer.code": "$buyer.code",
+                                    "buyer.name": "$buyer.name",
                                     "purchaseRequest.shipmentDate": "$purchaseRequest.shipmentDate",
                                     "artikel": "$artikel",
                                     "product.name": "$items.product.name",
                                     "product.code": "$items.product.code",
-                                    "product.description": "$items.product.description",
+                                    "product.description": "$items.remark",
                                     "category": "$items.category.name",
                                     "defaultQuantity": "$items.defaultQuantity",
                                     "defaultUom": "$items.defaultUom.unit",
                                     "budgetPrice": "$items.budgetPrice",
                                     "currencyRate": "$items.currency.rate",
                                     "dealQuantity": "$items.dealQuantity",
+                                    "currency": "$items.currency.code",
                                     "dealUom": "$items.dealUom.unit",
                                     "pricePerDealUnit": "$items.pricePerDealUnit",
                                     "supplier.name": "$items.supplier.name",
@@ -1612,6 +1725,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "poeNo": "$items.purchaseOrderExternal.no",
                                     "poeDate": "$items.purchaseOrderExternal.date",
                                     "poeExpectedDeliveryDate": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                                    "usePPN": "$items.purchaseOrderExternal.useIncomeTax",
+                                    "usePPH": "$items.purchaseOrderExternal.useVat",
+                                    "vatRate": "$items.purchaseOrderExternal.vatRate",
                                     "status": 1,
                                     "fulfillments": "$items.fulfillments",
                                     "fulfillmentsTotal": "$items.fulfillments.deliveryOrderDeliveredQuantity",
@@ -1631,6 +1747,8 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "unit.division.name": 1,
                                     "refNo": 1,
                                     "roNo": 1,
+                                    "buyer.code": 1,
+                                    "buyer.name": 1,
                                     "purchaseRequest.shipmentDate": 1,
                                     "artikel": 1,
                                     "product.name": 1,
@@ -1642,6 +1760,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "budgetPrice": 1,
                                     "currencyRate": 1,
                                     "dealQuantity": 1,
+                                    "currency": 1,
                                     "dealUom": 1,
                                     "pricePerDealUnit": 1,
                                     "supplier.name": 1,
@@ -1650,6 +1769,9 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "poeNo": 1,
                                     "poeDate": 1,
                                     "poeExpectedDeliveryDate": 1,
+                                    "usePPN": 1,
+                                    "usePPH": 1,
+                                    "vatRate": 1,
                                     "status": 1,
                                     "fulfillment": "$fulfillments",
                                     "fulfillmentsTotal": 1,
@@ -1658,6 +1780,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                                     "_createdBy": 1
                                 }
                             },
+                            { $sort : { "refNo" : 1 } },
                             { $skip: page * size },
                             { $limit: size }
                         ])
@@ -1679,7 +1802,7 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                     var remainQuantity = 0;
                     var sum = 0;
 
-                    if (data.arrayIndex != null && data.arrayIndex >= 0) {
+                    if (data.arrayIndex || data.arrayIndex >= 0) {
                         sum = 0;
                         for (var i = 0; i <= data.arrayIndex; i++) {
                             sum += data.fulfillmentsTotal[i];
@@ -1719,6 +1842,12 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                         data.correction = {};
                     }
                     index++;
+                    if (!data.supplier) {
+                        data.supplier = {
+                            code: "",
+                            name: ""
+                        }
+                    }
                     var item = {
                         no: index,
                         prDate: data.prDate ? moment(new Date(data.prDate)).add(offset, 'h').format(dateFormat) : "-",
@@ -1727,23 +1856,34 @@ module.exports = class PurchaseOrderManager extends BaseManager {
                         division: data.unit.division.name,
                         refNo: data.refNo,
                         roNo: data.roNo,
-                        shipmentDate: data.purchaseRequest.shipmentDate ? moment(new Date(data.purchaseRequest.shipmentDate)).add(offset, 'h').format(dateFormat) : "-",
+                        buyerCode: data.buyer.code,
+                        buyerName: data.buyer.name,
+                        shipmentDate: data.purchaseRequest.shipmentDate ? moment(new Date(data.purchaseRequest.shipmentDate)).add(offset, 'h').format(dateFormat): "-",
                         artikel: data.artikel,
+                        planpo: data.planpo,
                         category: data.category,
                         productName: data.product.name,
                         productCode: data.product.code,
                         productDesc: data.product.description,
                         defaultQuantity: data.defaultQuantity ? data.defaultQuantity : 0,
                         defaultUom: data.defaultUom ? data.defaultUom : "-",
-                        budgetPrice: data.budgetPrice * data.currencyRate,
-                        pricePerItem: data.pricePerDealUnit * data.currencyRate,
-                        priceTotal: data.pricePerDealUnit * data.dealQuantity * data.currencyRate,
+                        dealUom: data.dealUom ? data.dealUom : "-",
+                        budgetPrice: data.budgetPrice,
+                        pricePerItem: data.pricePerDealUnit,
+                        priceTotal: data.pricePerDealUnit * data.dealQuantity,
+                        priceTtl: data.pricePerDealUnit * data.dealQuantity * data.currencyRate,
+                        currencyRate: data.currencyRate,
                         supplierCode: data.supplier.code,
                         supplierName: data.supplier.name,
                         poIntCreatedDate: data._createdDate ? moment(new Date(data._createdDate)).add(offset, 'h').format(dateFormat) : "-",
                         poExtNo: data.poeNo,
                         poExtDate: data.poeDate ? moment(new Date(data.poeDate)).add(offset, 'h').format(dateFormat) : "-",
                         poExtExpectedDeliveryDate: data.poeExpectedDeliveryDate ? moment(new Date(data.poeExpectedDeliveryDate)).add(offset, 'h').format(dateFormat) : "-",
+                        poExtPPN: data.usePPN ? "Ya" : "Tidak",
+                        poExtPPH: data.usePPH ? "Ya" : "Tidak",
+                        poExtVat: data.vatRate ? data.vatRate : "-",
+                        dealQuantity: data.dealQuantity ? data.dealQuantity : 0,
+                        currency: data.currency,
                         deliveryOrderNo: data.fulfillment ? data.fulfillment.deliveryOrderNo ? data.fulfillment.deliveryOrderNo : "-" : "-",
                         deliveryOrderUseCustoms: data.fulfillment ? data.fulfillment.deliveryOrderUseCustoms ? data.fulfillment.deliveryOrderUseCustoms : false : false,
                         supplierDoDate: data.fulfillment ? data.fulfillment.supplierDoDate ? moment(new Date(data.fulfillment.supplierDoDate)).add(offset, 'h').format(dateFormat) : "-" : "-",
@@ -1808,60 +1948,68 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             var item = {
                 "No": data.no,
                 "Tanggal Purchase Request": data.prDate,
-                "Nomor Purchase Request": data.prNo,
+                "No Purchase Request": data.prNo,
                 "Unit": data.unit,
                 "Divisi": data.division,
-                "Nomor Ref Purchase Request": data.refNo,
-                "Nomor RO": data.roNo,
+                "No Ref Purchase Request": data.refNo,
+                "No RO": data.roNo,
+                "Buyer": data.buyerCode,
+                "Nama Buyer": data.buyerName,
                 "Shipment Garment": data.shipmentDate,
                 "Artikel": data.artikel,
                 "Kategori": data.category,
                 "Nama Barang": data.productName,
                 "Kode Barang": data.productCode,
                 "Keterangan Barang": data.productDesc,
-                "Jumlah Barang": data.defaultQuantity,
-                "Satuan Barang": data.defaultUom,
+                "Jumlah Barang": data.dealQuantity,
+                "Satuan Barang": data.dealUom,
                 "Harga Budget": data.budgetPrice,
                 "Harga Satuan Beli": data.pricePerItem,
-                "Harga Total": data.pricePerItem,
+                "Harga Total": data.priceTotal,
+                "Mata Uang": data.currency,
+                "Kurs": data.currencyRate,
+                "Harga Total Rp": data.priceTtl,
                 "Kode Supplier": data.supplierCode,
                 "Nama Supplier": data.supplierName,
                 "Tanggal Terima PO Internal": data.poIntCreatedDate,
-                "Nomor PO Eksternal": data.poExtNo,
+                "No PO Eksternal": data.poExtNo,
                 "Tanggal PO Eksternal": data.poExtDate,
                 "Tanggal Target Datang": data.poExtExpectedDeliveryDate,
-                "Nomor Surat Jalan": data.deliveryOrderNo,
+                "Dikenakan PPN": data.poExtPPN,
+                "Dikenakan PPH": data.poExtPPH,
+                "PPH": data.poExtVat,
+                "No Surat Jalan": data.deliveryOrderNo,
                 "Dikenakan Bea Cukai": data.deliveryOrderUseCustoms ? "Ya" : "Tidak",
                 "Tanggal Surat Jalan": data.supplierDoDate,
                 "Tanggal Datang Barang": data.deliveryOrderDate,
                 "Jumlah Barang Datang": data.deliveryOrderDeliveredQuantity,
-                "Satuan": data.defaultUom,
+                "Satuan": data.dealUom,
                 "Jumlah Barang Sisa": data.remainQuantity,
-                "Nomor Bea Cukai": data.customsNo,
+                "No Bea Cukai": data.customsNo,
                 "Tanggal Bea Cukai": data.customsDate,
-                "Nomor Bon Terima Unit": data.unitReceiptNoteNo,
+                "No Bon Terima Unit": data.unitReceiptNoteNo,
                 "Tanggal Bon Terima Unit": data.unitReceiptNoteDate,
                 "Jumlah Barang Diterima": data.unitReceiptNoteDeliveredQuantity,
                 "Satuan Barang Diterima": data.unitReceiptDeliveredUom,
-                "Nomor Invoice": data.invoiceNo,
+                "No Invoice": data.invoiceNo,
                 "Tanggal Invoice": data.invoiceDate,
                 "Dikenakan PPN": data.invoiceUseIncomeTax ? "Ya" : "Tidak",
-                "Nomor PPN": data.invoiceIncomeTaxNo,
+                "No PPN": data.invoiceIncomeTaxNo,
                 "Tanggal PPN": data.invoiceIncomeTaxDate,
                 "Nilai PPN": data.incomeValue,
                 "Dikenakan PPH": data.invoiceUseVat ? "Ya" : "Tidak",
                 "Jenis PPH": data.invoiceVat,
-                "Nomor PPH": data.invoiceVatNo,
+                "No PPH": data.invoiceVatNo,
                 "Tanggal PPH": data.invoiceVatDate,
                 "Nilai PPH": data.vatValue,
-                "Nomor Nota Intern": data.interNoteNo,
+                "No Nota Intern": data.interNoteNo,
                 "Tanggal Nota Intern": data.interNoteDate,
                 "Nilai Nota Intern": data.interNoteValue,
                 "Tanggal Jatuh Tempo": data.interNoteDueDate,
-                "Nomor Koreksi": data.correctionNo,
+                "No Koreksi": data.correctionNo,
                 "Tanggal Koreksi": data.correctionDate,
                 "Nilai Koreksi": data.correctionPriceTotal,
-                "Keterangan Koreksi": data.correctionRemark,
+                "Ket Koreksi": data.correctionRemark,
                 "Keterangan": data.remark,
                 "Status": data.status,
                 "_createdBy": data._createdBy
@@ -1872,11 +2020,13 @@ module.exports = class PurchaseOrderManager extends BaseManager {
         var options = {
             "No": "number",
             "Tanggal Purchase Request": "string",
-            "Nomor Purchase Request": "string",
+            "No Purchase Request": "string",
             "Unit": "string",
             "Divisi": "string",
-            "Nomor Ref Purchase Request": "string",
-            "Nomor RO": "string",
+            "No Ref Purchase Request": "string",
+            "No RO": "string",
+            "Buyer": "string",
+            "Nama Buyer": "string",
             "Shipment Garment": "string",
             "Artikel": "string",
             "Kategori": "string",
@@ -1887,44 +2037,50 @@ module.exports = class PurchaseOrderManager extends BaseManager {
             "Satuan Barang": "string",
             "Harga Barang": "number",
             "Harga Total": "number",
+            "Mata Uang": "string",
+            "Kurs": "number",
+            "Harga Total Rp": "number",
             "Kode Supplier": "string",
             "Nama Supplier": "string",
             "Tanggal Terima PO Internal": "string",
-            "Nomor PO Eksternal": "string",
+            "No PO Eksternal": "string",
             "Tanggal PO Eksternal": "string",
             "Tanggal Target Datang": "string",
-            "Nomor Surat Jalan": "string",
+            "Dikenakan PPN": "string",
+            "Dikenakan PPH": "string",
+            "PPH": "string",
+            "No Surat Jalan": "string",
             "Dikenakan Bea Cukai": "string",
             "Tanggal Surat Jalan": "string",
             "Tanggal Datang Barang": "string",
             "Jumlah Barang Datang": "number",
             "Satuan": "string",
             "Jumlah Barang Sisa": "string",
-            "Nomor Bea Cukai": "string",
+            "No Bea Cukai": "string",
             "Tanggal Bea Cukai": "string",
-            "Nomor Bon Terima Unit": "string",
+            "No Bon Terima Unit": "string",
             "Tanggal Bon Terima Unit": "string",
             "Jumlah Barang Diterima": "number",
             "Satuan Barang Diterima": "string",
-            "Nomor Invoice": "string",
+            "No Invoice": "string",
             "Tanggal Invoice": "string",
             "Dikenakan PPN": "string",
-            "Nomor PPN": "string",
+            "No PPN": "string",
             "Tanggal PPN": "string",
             "Nilai PPN": "number",
             "Dikenakan PPH": "string",
             "Jenis PPH": "string",
-            "Nomor PPH": "string",
+            "No PPH": "string",
             "Tanggal PPH": "string",
             "Nilai PPH": "number",
-            "Nomor Nota Intern": "string",
+            "No Nota Intern": "string",
             "Tanggal Nota Intern": "string",
             "Nilai Nota Intern": "string",
             "Tanggal Jatuh Tempo": "string",
-            "Nomor Koreksi": "string",
+            "No Koreksi": "string",
             "Tanggal Koreksi": "string",
             "Nilai Koreksi": "string",
-            "Keterangan Koreksi": "string",
+            "Ket Koreksi": "string",
             "Keterangan": "string",
             "Status": "string",
             "Staff Input": "string"
@@ -1942,7 +2098,1309 @@ module.exports = class PurchaseOrderManager extends BaseManager {
         }
         else
             xls.name = `Laporan Monitoring Pembelian All.xlsx`;
-
         return Promise.resolve(xls);
     }
+
+
+getDataKirim( dateFrom, dateTo, offset) {
+        return this._createIndexes()
+            .then((createIndexResults) => {
+                return new Promise((resolve, reject) => {
+                
+                      var qryMatch = {};
+            qryMatch["$and"] = [
+                { "_deleted": false },
+                { "isPosted": true }, {
+                        "items.category.name":{$ne:"SUBKON"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"INTERLINING"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PROCESS"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"WASH"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PRINT"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"PLISKET"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"EMBROIDERY"} 
+                    }];
+
+if (dateFrom && dateFrom !== ""  && dateTo && dateTo !== "" ) {
+                var validStartDate = new Date(dateFrom);
+                var validEndDate = new Date(dateTo);
+                validStartDate.setHours(validStartDate.getHours() - offset);
+                validEndDate.setHours(validEndDate.getHours() - offset);
+
+                qryMatch["$and"].push(
+                    {
+                        "items.fulfillments.supplierDoDate": {
+                            $gte: validStartDate,
+                            $lte: validEndDate
+                        }
+                    })
+            }
+           
+          
+
+ var bbbb = new Date();
+             bbbb.setHours(bbbb.getHours() );
+          var aaaa = { $ifNull: ["$items.purchaseOrderExternal.expectedDeliveryDate", bbbb] };       
+  
+var dates = {
+                $divide: [{
+                    $subtract: [{
+                        $subtract: [
+                            { "$add": ["$items.fulfillments.supplierDoDate" , 60 * 60 * 1000 ] },
+                            {
+                                "$add": [
+                                    { "$millisecond": "$items.fulfillments.supplierDoDate" },
+                                    {
+                                        "$multiply": [
+                                            { "$second": "$items.fulfillments.supplierDoDate" },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": "$items.fulfillments.supplierDoDate" },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": ["$items.fulfillments.supplierDoDate", 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }, {
+                        $subtract: [
+                            { "$add": [aaaa, 60 * 60 * 1000] },
+                            {
+                                "$add": [
+                                    { "$millisecond": aaaa },
+                                    {
+                                        "$multiply": [
+                                            { "$second": aaaa },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": aaaa },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": [aaaa, 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }]
+                    }]
+                }, 86400000]
+            };
+
+  
+  
+                    return this.collection
+                        .aggregate([
+                            {
+                            $match: qryMatch
+                            },
+                            
+                              {
+                               $unwind: { path: "$items", preserveNullAndEmptyArrays: false }
+                            },
+                            {
+                               $unwind: { path: "$items.fulfillments", preserveNullAndEmptyArrays: false }
+                            },
+                
+                              {
+                                "$project": {
+                                //  "tgl1": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                                //  "tgl2": "$items.fulfillments.supplierDoDate",
+                                 "supplier": "$items.supplier.name",
+                                 "kdsupplier": "$items.supplier.code",
+                                 "selisih": dates,
+                                 "Ok": {  // Set to 1 if value < 10
+                $cond: [ { $lt: [dates, 5 ] }, 1, 0]
+            },
+                                 "NotOk":  {  // Set to 1 if value > 10
+                $cond: [ { $gt: [ dates, 5 ] }, 1, 0]
+            },
+                            
+                                }
+                            },
+                           {
+                        $group: {
+                            _id: { supplier: "$supplier",kdsupplier: "$kdsupplier"} ,
+                             "Ok": { $sum: "$Ok" },
+                             "NotOk": { $sum: "$NotOk" },
+                                 count: { $sum: 1 }
+                             
+                        }
+                             }, 
+                             {
+                                "$project": {
+                                 "Ok": "$Ok",
+                                 "NotOk": "$NotOk",
+                                 "count": "$count",
+                                 "_id.supplier": "$_id.supplier",
+                                 "_id.kdsupplier": "$_id.kdsupplier",
+                                "Cek":{$multiply:[{$divide:["$Ok","$count"]},100]},
+                                }
+                            },
+                              {
+                        $sort: 
+                            { "_id.supplier": 1} 
+                             },
+                        ])
+                        .toArray()
+                        .then(results => {
+                            resolve(results);
+                        })
+                        .catch(e => {
+                            reject(e);
+                        });
+                });
+            });
+    }
+
+
+
+ getDataKirimSub(supplier,dateFrom,dateTo,offset) {
+        return this._createIndexes()
+            .then((createIndexResults) => {
+                return new Promise((resolve, reject) => {
+
+                      var qryMatch = {};
+
+                          
+            qryMatch["$and"] = [
+                { "_deleted": false },
+                { "isPosted": true }, {
+                        "items.category.name":{$ne:"SUBKON"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"INTERLINING"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PROCESS"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"WASH"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PRINT"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"PLISKET"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"EMBROIDERY"} 
+                    }];
+
+          if (dateFrom && dateFrom !== ""  && dateTo && dateTo !== "" ) {
+                var validStartDate = new Date(dateFrom);
+                var validEndDate = new Date(dateTo);
+                validStartDate.setHours(validStartDate.getHours() - offset);
+                validEndDate.setHours(validEndDate.getHours() - offset);
+       
+                qryMatch["$and"].push(
+                    {
+                        "items.fulfillments.supplierDoDate": {
+                            $gte: validStartDate,
+                            $lte: validEndDate
+                        }
+                    })
+              
+            }
+
+        if (supplier !== "") {
+                             qryMatch["$and"].push(
+                   {
+                         "items.supplier.code":supplier
+                     })
+        
+        }
+       
+
+          
+        
+ var bbbb = new Date();
+             bbbb.setHours(bbbb.getHours() );
+          var aaaa = { $ifNull: ["$items.purchaseOrderExternal.expectedDeliveryDate", bbbb] };
+  
+var dates = {
+                $divide: [{
+                    $subtract: [{
+                        $subtract: [
+                            { "$add": ["$items.fulfillments.supplierDoDate" , 60 * 60 * 1000 ] },
+                            {
+                                "$add": [
+                                    { "$millisecond": "$items.fulfillments.supplierDoDate" },
+                                    {
+                                        "$multiply": [
+                                            { "$second": "$items.fulfillments.supplierDoDate" },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": "$items.fulfillments.supplierDoDate" },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": ["$items.fulfillments.supplierDoDate", 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }, {
+                        $subtract: [
+                            { "$add": [aaaa, 60 * 60 * 1000] },
+                            {
+                                "$add": [
+                                    { "$millisecond": aaaa },
+                                    {
+                                        "$multiply": [
+                                            { "$second": aaaa },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": aaaa },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": [aaaa, 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }]
+                    }]
+                }, 86400000]
+            };
+
+                    return this.collection
+                        .aggregate([
+                    
+                            {
+                            $match: qryMatch
+                            },
+                            
+                              {
+                               $unwind: { path: "$items", preserveNullAndEmptyArrays: false }
+                            },
+                             {
+                               $unwind: { path: "$items.fulfillments", preserveNullAndEmptyArrays: false }
+                            },
+                             
+                              {
+                                "$project": {
+                             
+                                    "refNo": "$items.refNo",
+                                    "roNo": "$roNo",
+                                    "purchaseRequestshipmentDate": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                                    "artikel": "$artikel",
+                                    "productname": "$items.product.name",
+                                    "productcode": "$items.product.code",
+                                    "productdescription": "$items.remark",
+                                    "category": "$items.category.name",
+                                     "supplier": "$items.supplier.name",
+                                    "suppliercode": "$items.supplier.code",
+                                    "selisih": dates,
+                                    "poeNo": "$items.purchaseOrderExternal.no",
+                                    "poeDate": "$items.purchaseOrderExternal.date",
+                                    "remark": "$items.remark",
+                                    "tglll": "$items.fulfillments.supplierDoDate",
+                                    "tglpr": "$date",
+                                    "tglpo": "$_createdDate",
+                                    "_createdBy": "$_createdBy",
+                                    "kategori": "$items.category.name",
+                                
+                            
+                                }
+                            },{
+                        $sort: 
+                            { "tglll": 1} 
+                             },
+                       
+                        ])
+                        .toArray()
+                        .then(results => {
+                            resolve(results);
+                        })
+                        .catch(e => {
+                            reject(e);
+                        });
+                });
+            });
+    }
+
+
+
+    getDataTest( dateFrom, dateTo, kategori, offset) {
+        return this._createIndexes()
+            .then((createIndexResults) => {
+                return new Promise((resolve, reject) => {
+                
+                      var qryMatch = {};
+            qryMatch["$and"] = [
+                { "_deleted": false },
+                { "isPosted": true }];
+
+
+//if (dateFrom && dateFrom !== "" && dateFrom != "undefined" && dateTo && dateTo !== "" && dateTo != "undefined") {
+if (dateFrom && dateFrom !== ""  && dateTo && dateTo !== "" ) {
+                var validStartDate = new Date(dateFrom);
+                var validEndDate = new Date(dateTo);
+                validStartDate.setHours(validStartDate.getHours() - offset);
+                validEndDate.setHours(validEndDate.getHours() - offset);
+
+                qryMatch["$and"].push(
+                    {
+                        "items.fulfillments.deliveryOrderDate": {
+                            $gte: validStartDate,
+                            $lte: validEndDate
+                        }
+                    })
+            }
+           
+            var aa={$or:[{
+                        "items.category.name":"FABRIC" 
+                    },{
+                        "items.category.name":"INTERLINING" 
+                    }]} 
+          
+
+ var bbbb = new Date();
+             bbbb.setHours(bbbb.getHours() );
+          var aaaa = { $ifNull: ["$items.fulfillments.deliveryOrderDate", bbbb] };       
+  
+var dates = {
+                $divide: [{
+                    $subtract: [{
+                        $subtract: [
+                            { "$add": ["$purchaseRequest.shipmentDate" , 60 * 60 * 1000 ] },
+                            {
+                                "$add": [
+                                    { "$millisecond": "$purchaseRequest.shipmentDate" },
+                                    {
+                                        "$multiply": [
+                                            { "$second": "$purchaseRequest.shipmentDate" },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": "$purchaseRequest.shipmentDate" },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": ["$purchaseRequest.shipmentDate", 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }, {
+                        $subtract: [
+                            { "$add": [aaaa, 60 * 60 * 1000] },
+                            {
+                                "$add": [
+                                    { "$millisecond": aaaa },
+                                    {
+                                        "$multiply": [
+                                            { "$second": aaaa },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": aaaa },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": [aaaa, 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }]
+                    }]
+                }, 86400000]
+            };
+
+  if (kategori == "Bahan Baku" ) {
+                        qryMatch["$and"].push(
+                            aa
+                    )
+                    var cmd = {  
+                              $cond: [ { $gt: [ dates, 29 ] }, 1, 0]
+                            };
+                    var ncmd = { 
+                                $cond: [ { $lt: [dates, 30 ] }, 1, 0]
+                              };
+                }
+            if (kategori == "Bahan Pendukung" ) {
+                        qryMatch["$and"].push(
+                           {
+                        "items.category.name":{$ne:"FABRIC"} 
+                    },  {
+                        "items.category.name":{$ne:"SUBKON"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"INTERLINING"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PROCESS"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"WASH"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PRINT"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"PLISKET"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"EMBROIDERY"} 
+                    }
+                    )
+
+                      var cmd = {  
+                              $cond: [ { $gt: [ dates, 19 ] }, 1, 0]
+                            };
+                    var  ncmd = { 
+                                $cond: [ { $lt: [dates, 20 ] }, 1, 0]
+                              };
+                }
+
+  
+                    return this.collection
+                        .aggregate([
+                            {
+                            $match: qryMatch
+                            },
+                            
+                              {
+                               $unwind: { path: "$items", preserveNullAndEmptyArrays: false }
+                            },
+                            {
+                               $unwind: { path: "$items.fulfillments", preserveNullAndEmptyArrays: false }
+                            },
+                
+                              {
+                                "$project": {
+                                 "tgl1": "$items.fulfillments.deliveryOrderDate",
+                                 "tgl2": "$purchaseRequest.shipmentDate",
+                                 "supplier": "$items.supplier.name",
+                                 "kdsupplier": "$items.supplier.code",
+                                 "selisih": dates,
+                                 "NotOk": ncmd,
+                                 "Ok": cmd,
+                            
+                                }
+                            },
+                           {
+                        $group: {
+                            _id: { supplier: "$supplier",kdsupplier: "$kdsupplier"} ,
+                             "Ok": { $sum: "$Ok" },
+                             "NotOk": { $sum: "$NotOk" },
+                                 count: { $sum: 1 }
+                             
+                        }
+                             }, 
+                             {
+                                "$project": {
+                                 "Ok": "$Ok",
+                                 "NotOk": "$NotOk",
+                                 "count": "$count",
+                                 "_id.supplier": "$_id.supplier",
+                                 "_id.kdsupplier": "$_id.kdsupplier",
+                                "Cek":{$multiply:[{$divide:["$Ok","$count"]},100]},
+                                }
+                            },
+                              {
+                        $sort: 
+                            { Cek: 1,count: -1} 
+                             },
+                        ])
+                        .toArray()
+                        .then(results => {
+                            resolve(results);
+                        })
+                        .catch(e => {
+                            reject(e);
+                        });
+                });
+            });
+    }
+
+
+
+    getDataTestSub(supplier,dateFrom,dateTo,kategori,offset) {
+        return this._createIndexes()
+            .then((createIndexResults) => {
+                return new Promise((resolve, reject) => {
+
+                      var qryMatch = {};
+
+                          
+            qryMatch["$and"] = [
+                { "_deleted": false },
+                { "isPosted": true }];
+
+          if (dateFrom && dateFrom !== ""  && dateTo && dateTo !== "" ) {
+                var validStartDate = new Date(dateFrom);
+                var validEndDate = new Date(dateTo);
+                validStartDate.setHours(validStartDate.getHours() - offset);
+                validEndDate.setHours(validEndDate.getHours() - offset);
+       
+                qryMatch["$and"].push(
+                    {
+                        "items.fulfillments.deliveryOrderDate": {
+                            $gte: validStartDate,
+                            $lte: validEndDate
+                        }
+                    })
+              
+            }
+
+        if (supplier !== "") {
+                             qryMatch["$and"].push(
+                   {
+                         "items.supplier.code":supplier
+                     })
+        
+        }
+         var aa={$or:[{
+                        "items.category.name":"FABRIC" 
+                    },{
+                        "items.category.name":"INTERLINING" 
+                    }]} 
+          
+            if (kategori == "Bahan Baku" ) {
+                        qryMatch["$and"].push(
+                            aa
+                    )
+                }
+            if (kategori == "Bahan Pendukung" ) {
+                        qryMatch["$and"].push(
+                           {
+                        "items.category.name":{$ne:"FABRIC"} 
+                    },  {
+                        "items.category.name":{$ne:"SUBKON"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"INTERLINING"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PROCESS"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"WASH"} 
+                    },
+                     {
+                        "items.category.name":{$ne:"PRINT"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"PLISKET"} 
+                    }
+                    ,
+                     {
+                        "items.category.name":{$ne:"EMBROIDERY"} 
+                    }
+                    )
+                }
+
+          
+        
+ var bbbb = new Date();
+             bbbb.setHours(bbbb.getHours() );
+          var aaaa = { $ifNull: ["$items.fulfillments.deliveryOrderDate", bbbb] };
+  
+var dates = {
+                $divide: [{
+                    $subtract: [{
+                        $subtract: [
+                            { "$add": ["$purchaseRequest.shipmentDate" , 60 * 60 * 1000 ] },
+                            {
+                                "$add": [
+                                    { "$millisecond": "$purchaseRequest.shipmentDate" },
+                                    {
+                                        "$multiply": [
+                                            { "$second": "$purchaseRequest.shipmentDate" },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": "$purchaseRequest.shipmentDate" },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": ["$purchaseRequest.shipmentDate", 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    }, {
+                        $subtract: [
+                            { "$add": [aaaa, 60 * 60 * 1000] },
+                            {
+                                "$add": [
+                                    { "$millisecond": aaaa },
+                                    {
+                                        "$multiply": [
+                                            { "$second": aaaa },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": aaaa },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": [aaaa, 60 * 60 * 1000 ] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }]
+                    }]
+                }, 86400000]
+            };
+
+                    return this.collection
+                        .aggregate([
+                    
+                            {
+                            $match: qryMatch
+                            },
+                            
+                              {
+                               $unwind: { path: "$items", preserveNullAndEmptyArrays: false }
+                            },
+                             {
+                               $unwind: { path: "$items.fulfillments", preserveNullAndEmptyArrays: false }
+                            },
+                             
+                              {
+                                "$project": {
+                             
+                                    "refNo": "$items.refNo",
+                                    "roNo": "$roNo",
+                                    "purchaseRequestshipmentDate": "$purchaseRequest.shipmentDate",
+                                    "artikel": "$artikel",
+                                    "productname": "$items.product.name",
+                                    "productcode": "$items.product.code",
+                                    "productdescription": "$items.remark",
+                                    "category": "$items.category.name",
+                                     "supplier": "$items.supplier.name",
+                                    "suppliercode": "$items.supplier.code",
+                                    "selisih": dates,
+                                    "poeNo": "$items.purchaseOrderExternal.no",
+                                    "poeDate": "$items.purchaseOrderExternal.date",
+                                    "remark": "$items.remark",
+                                    "tglll": "$items.fulfillments.deliveryOrderDate",
+                                    "tglpr": "$date",
+                                    "tglpo": "$_createdDate",
+                                    "_createdBy": "$_createdBy",
+                                    "kategori": "$items.category.name",
+                                
+                            
+                                }
+                            },
+                            {
+                        $sort: 
+                            { "tglll": 1} 
+                             },
+                       
+                        ])
+                        .toArray()
+                        .then(results => {
+                            resolve(results);
+                        })
+                        .catch(e => {
+                            reject(e);
+                        });
+                });
+            });
+    }
+
+getDurationPOIntPoExt(query) {
+        return new Promise((resolve, reject) => {
+            var deletedQuery = {
+                _deleted: false
+            };
+            var postedQuery = {
+                isPosted: true
+            };
+            var closedQuery = {
+                isClosed: true
+            };
+            // Tgl Po Internal
+            var date = {
+                "_createdDate": {
+                    "$gte": (!query || !query.dateFrom ? (new Date("1900-01-01")) : (new Date(`${query.dateFrom} 00:00:00`))),
+                    "$lte": (!query || !query.dateTo ? (new Date()) : (new Date(`${query.dateTo} 23:59:59`)))
+                }
+            };
+            var offset = query.offset;
+            
+            var userQuery = {};
+            if (query.user && query.user != "") {
+                userQuery = { 
+                    "_createdBy": query.user 
+                }
+            }
+
+            var unitQuery = {};
+            if (query.unitId && query.unitId != "") {
+                unitQuery = {
+                    "unit._id": new ObjectId(query.unitId)
+                }
+            }
+
+            // Tgl Po External
+            var dates = {
+                $divide: [{
+                    $subtract: [{
+                        $subtract: [{ "$add": ["$items.purchaseOrderExternal._createdDate", 60 * offset * 60 * 1000] },
+                        {
+                            "$add": [
+                                { "$millisecond": "$items.purchaseOrderExternal._createdDate" },
+                                {
+                                    "$multiply": [
+                                        { "$second": "$items.purchaseOrderExternal._createdDate" },
+                                        1000
+                                    ]
+                                },
+                                {
+                                    "$multiply": [
+                                        { "$minute": "$items.purchaseOrderExternal._createdDate" },
+                                        60, 1000
+                                    ]
+                                },
+                                {
+                                    "$multiply": [
+                                        { "$hour": { "$add": ["$items.purchaseOrderExternal._createdDate", 60 * offset * 60 * 1000] } },
+                                        60, 60, 1000
+                                    ]
+                                }
+                            ]
+                        }
+                        ]
+                    }, {
+                        $subtract: [
+                            { "$add": ["$_createdDate", 60 * offset * 60 * 1000] },
+                            {
+                                "$add": [
+                                    { "$millisecond": "$_createdDate" },
+                                    {
+                                        "$multiply": [
+                                            { "$second": "$_createdDate" },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": "$_createdDate" },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": ["$_createdDate", 60 * offset * 60 * 1000] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }]
+                    }]
+                }, 86400000]
+            };
+            var durationQuery = {};
+            if (query.duration === "0-7 hari") {
+                durationQuery = {
+                    $cond: {
+                        if: { $lt: [dates, 8] },
+                        then: "$$KEEP",
+                        else: "$$PRUNE"
+                    }
+                }
+            }
+            else if (query.duration === "8-14 hari") {
+                durationQuery = {
+                    $cond: {
+                        if: {
+                            "$and": [
+                                { $gte: [dates, 8] },
+                                { $lte: [dates, 14] }
+                            ]
+                        },
+                        then: "$$KEEP",
+                        else: "$$PRUNE"
+                    }
+                }
+            }
+            else if (query.duration === "15-30 hari") {
+                durationQuery = {
+                    $cond: {
+                        if: {
+                            "$and": [
+                                { $gt: [dates, 14] },
+                                { $lte: [dates, 30] }
+                            ]
+                        },
+                        then: "$$KEEP",
+                        else: "$$PRUNE"
+                    }
+                }
+            }
+            else if (query.duration === "> 30 hari") {
+                durationQuery = {
+                    $cond: {
+                        if: { $gt: [dates, 30] },
+                        then: "$$KEEP",
+                        else: "$$PRUNE"
+                    }
+                }
+            }
+
+            var Query = { "$and": [date, deletedQuery, postedQuery, closedQuery, unitQuery, userQuery] };
+
+            this.collection.aggregate([
+                { $unwind: "$items" },
+                { $match: Query },
+                { $redact: durationQuery },
+                {
+                    $project: {
+                        "poIntNo": "$refNo",
+                        "roNo": "$roNo",
+                        "planPO": "$items.refNo",
+                        "artikelNo": "$artikel",
+                        "buyerName": "$buyer.name", 
+                        "unit": "$unit.name",
+                        "category": "$items.category.name",
+                        "productCode": "$items.product.code",
+                        "productName": "$items.remark",
+                        "productQuantity": "$items.dealQuantity",
+                        "productUom": "$items.dealUom.unit",
+                        "productPrice": "$items.pricePerDealUnit",
+                        "supplierCode": "$items.supplier.code",
+                        "supplierName": "$items.supplier.name",
+                        "poIntDate": "$date",
+                        "poIntCreatedDate": "$_createdDate",
+                        "poEksCreatedDate": "$items.purchaseOrderExternal._createdDate",
+                        "expectedDate": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                        "poEksNo": "$items.purchaseOrderExternal.no",
+                        "dateDiff": dates,
+                        "staff": "$items.purchaseOrderExternal._createdBy"
+                    }
+                },
+                { $sort: { "dateDiff": -1 } }
+            ])
+                .toArray().then(report => {
+                    var index = 0;
+                    for (var x of report) {
+                        index++;
+                        x.index = index;
+                    }
+                    report.data = report.slice(parseInt(query.size) * (parseInt(query.page) - 1), parseInt(query.size) + (parseInt(query.size) * (parseInt(query.page) - 1)));
+                    report.info = {
+                        total: report.length,
+                        size: query.size,
+                        count: query.size,
+                        page: query.page
+                    }
+                    resolve(report);
+                });
+        });
+    }
+
+    getXlsDurationPOIntPOExt(result, query) {
+        var xls = {};
+        xls.data = [];
+        xls.options = [];
+        xls.name = '';
+
+        var index = 0;
+        var dateFormat = "DD/MM/YYYY";
+        var offset = query.offset;
+        for (var report of result.info) {
+            var dateDiff = Math.ceil(report.dateDiff);
+            index++;
+            var item = {};
+            item["No"] = index;
+            item["No PO Internal"] = report.poIntNo;
+            item["No RO"] = report.roNo;
+            item["Plan PO"] = report.planPO;
+            item["Article / Style"] = report.artikelNo;
+            item["Nama Buyer"] = report.buyerName;
+            item["Unit"] = report.unit;
+            item["Kategori"] = report.category;
+            item["Kode Barang"] = report.productCode;
+            item["Nama Barang"] = report.productName;
+            item["Jumlah Barang"] = report.productQuantity;
+            item["Satuan Barang"] = report.productUom;
+            item["Harga Barang"] = report.productPrice;
+            item["Kode Supplier"] = report.supplierCode;
+            item["Nama Supplier"] = report.supplierName;
+            item["Tanggal PO Internal"] = moment(new Date(report.poIntCreatedDate)).add(7, 'h').format(dateFormat);
+            item["Tanggal PO Eksternal"] = moment(new Date(report.poEksCreatedDate)).add(7, 'h').format(dateFormat);
+            item["Tanggal Target Datang"] = moment(new Date(report.expectedDate)).add(7, 'h').format(dateFormat);
+            item["No PO Eksternal"] = report.poEksNo;
+            item["Selisih Tanggal PO Internal - PO Eksternal (hari)"] = dateDiff;
+            item["Nama Staff Pembelian"] = report.staff;
+
+            xls.data.push(item);
+        }
+
+        xls.options = {
+            "No": "number",
+            "No Po Internal": "string",
+            "No RO": "string",
+            "Plan PO": "string",
+            "Article / Style": "string",
+            "Nama Buyer": "string",
+            "Unit": "string",
+            "Kategori": "string",
+            "Kode Barang": "string",
+            "Nama Barang": "string",
+            "Jumlah Barang": "number",
+            "Satuan Barang": "string",
+            "Harga Barang": "number",
+            "Kode Supplier": "string",
+            "Nama Supplier": "string",
+            "Tanggal PO Internal": "string",
+            "Tanggal PO Eksternal": "string",
+            "Tanggal Target Datang": "string",
+            "No PO Eksternal": "string",
+            "Selisih Tanggal PO Internal - PO Eksternal (hari)": "number",
+            "Nama Staff Pembelian": "string"
+        };
+
+        if (query.dateFrom && query.dateTo) {
+            xls.name = `LAPORAN DURASI PO INTERNAL - PO EKSTERNAL GARMENT ${moment(new Date(query.dateFrom)).format(dateFormat)} - ${moment(new Date(query.dateTo)).format(dateFormat)}.xlsx`;
+        }
+        else if (!query.dateFrom && query.dateTo) {
+            xls.name = `LAPORAN DURASI PO INTERNAL - PO EKSTERNAL GARMENT ${moment(new Date(query.dateTo)).format(dateFormat)}.xlsx`;
+        }
+        else if (query.dateFrom && !query.dateTo) {
+            xls.name = `LAPORAN DURASI PO INTERNAL - PO EKSTERNAL GARMENT ${moment(new Date(query.dateFrom)).format(dateFormat)}.xlsx`;
+        }
+        else
+            xls.name = `LAPORAN DURASI PO INTERNAL - PO EKSTERNAL GARMENT.xlsx`;
+
+        return Promise.resolve(xls);
+    }     
+getDurationPoExtDo(query) {
+        return new Promise((resolve, reject) => {
+            var deletedQuery = {
+                "items.purchaseOrderExternal._deleted": false
+            };
+            var postedQuery = {
+                "items.purchaseOrderExternal.isPosted": false
+            };
+            var closedQuery = {
+                "items.purchaseOrderExternal.isClosed": false
+            };
+            // Tgl Po Eksternal
+            var date = {
+                "items.purchaseOrderExternal._createdDate": {
+                    "$gte": (!query || !query.dateFrom ? (new Date("1900-01-01")) : (new Date(`${query.dateFrom} 00:00:00`))),
+                    "$lte": (!query || !query.dateTo ? (new Date()) : (new Date(`${query.dateTo} 23:59:59`)))
+                }
+            };
+            var offset = query.offset;
+            
+            var userQuery = {};
+            if (query.user && query.user != "") {
+                userQuery = { 
+                    "_createdBy": query.user 
+                }
+            }
+
+            var unitQuery = {};
+            if (query.unitId && query.unitId != "") {
+                unitQuery = {
+                    "unit._id": new ObjectId(query.unitId)
+                }
+            }
+
+            var supplierQuery = {};
+            if (query.supplierId && query.supplierId != ""){
+                supplierQuery = {
+                    "items.supplier._id": new ObjectId(query.supplierId)
+                }
+            }
+
+            // Tgl Po External
+            var dates = {
+                $divide: [{
+                    $subtract: [{
+                        $subtract: [{ "$add": ["$items.fulfillments.supplierDoDate", 60 * offset * 60 * 1000] },
+                        {
+                            "$add": [
+                                { "$millisecond": "$items.fulfillments.supplierDoDate" },
+                                {
+                                    "$multiply": [
+                                        { "$second": "$items.fulfillments.supplierDoDate" },
+                                        1000
+                                    ]
+                                },
+                                {
+                                    "$multiply": [
+                                        { "$minute": "$items.fulfillments.supplierDoDate" },
+                                        60, 1000
+                                    ]
+                                },
+                                {
+                                    "$multiply": [
+                                        { "$hour": { "$add": ["$items.fulfillments.supplierDoDate", 60 * offset * 60 * 1000] } },
+                                        60, 60, 1000
+                                    ]
+                                }
+                            ]
+                        }
+                        ]
+                    }, {
+                        $subtract: [
+                            { "$add": ["$items.purchaseOrderExternal._createdDate" , 60 * offset * 60 * 1000] },
+                            {
+                                "$add": [
+                                    { "$millisecond": "$items.purchaseOrderExternal._createdDate" },
+                                    {
+                                        "$multiply": [
+                                            { "$second": "$items.purchaseOrderExternal._createdDate" },
+                                            1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$minute": "$items.purchaseOrderExternal._createdDate" },
+                                            60, 1000
+                                        ]
+                                    },
+                                    {
+                                        "$multiply": [
+                                            { "$hour": { "$add": ["$items.purchaseOrderExternal._createdDate", 60 * offset * 60 * 1000] } },
+                                            60, 60, 1000
+                                        ]
+                                    }
+                                ]
+                            }]
+                    }]
+                }, 86400000]
+            };
+            var durationQuery = {};
+           if (query.duration === "0-30 hari") {
+                durationQuery = {
+                    $cond: {
+                        if: { $lt: [dates, 31] },
+                        then: "$$KEEP",
+                        else: "$$PRUNE"
+                    }
+                }
+            }
+            else if (query.duration === "31-60 hari") {
+                durationQuery = {
+                    $cond: {
+                        if: {
+                            "$and": [
+                                { $gte: [dates, 31] },
+                                { $lte: [dates, 60] }
+                            ]
+                        },
+                        then: "$$KEEP",
+                        else: "$$PRUNE"
+                    }
+                }
+            }
+            else if (query.duration === "> 60 hari") {
+                durationQuery = {
+                    $cond: {
+                        if: { $gt: [dates, 60] },
+                        then: "$$KEEP",
+                        else: "$$PRUNE"
+                    }
+                }
+            }
+
+            var Query = { "$and": [date, deletedQuery, unitQuery, supplierQuery, userQuery] };
+            this.collection.aggregate([
+                { $unwind: "$items" },
+                { $unwind: "$items.fulfillments"},
+                { $match: Query },
+                { $redact: durationQuery },
+                {
+                    $project: {
+                        "poIntNo": "$refNo",
+                        "roNo": "$roNo",
+                        "planPO": "$items.refNo",
+                        "artikelNo": "$artikel",
+                        "buyerName": "$buyer.name", 
+                        "unit": "$unit.name",
+                        "category": "$items.category.name",
+                        "productCode": "$items.product.code",
+                        "productName": "$items.remark",
+                        "productQuantity": "$items.dealQuantity",
+                        "productUom": "$items.dealUom.unit",
+                        "productPrice": "$items.pricePerDealUnit",
+                        "supplierCode": "$items.supplier.code",
+                        "supplierName": "$items.supplier.name",
+                        "poIntDate": "$date",
+                        "poIntCreatedDate": "$_createdDate",
+                        "poEksCreatedDate": "$items.purchaseOrderExternal._createdDate",
+                        "expectedDate": "$items.purchaseOrderExternal.expectedDeliveryDate",
+                        "poEksNo": "$items.purchaseOrderExternal.no",
+                        "deliveryOrderNo": "$items.fulfillments.deliveryOrderNo",
+                        "supplierDoDate": "$items.fulfillments.supplierDoDate",
+                        "dateDiff": dates,
+                        "staff": "$items.purchaseOrderExternal._createdBy"
+                    }
+                },
+                { $sort: {"items.purchaseOrderExternal._createdDate": -1}}
+            ])
+                .toArray().then(report => {
+                    var index = 0;
+                    for (var x of report) {
+                        index++;
+                        x.index = index;
+                    }
+                    report.data = report.slice(parseInt(query.size) * (parseInt(query.page) - 1), parseInt(query.size) + (parseInt(query.size) * (parseInt(query.page) - 1)));
+                    report.info = {
+                        total: report.length,
+                        size: query.size,
+                        count: query.size,
+                        page: query.page
+                    }
+                    resolve(report);
+                });
+        });
+    }
+
+    getXlsDurationPoExtDo(result, query) {
+        var xls = {};
+        xls.data = [];
+        xls.options = [];
+        xls.name = '';
+
+        var index = 0;
+        var dateFormat = "DD/MM/YYYY";
+        var offset = query.offset;
+        for (var report of result.data) {
+            var dateDiff = Math.ceil(report.dateDiff);
+            index++;
+            var item = {};
+            item["No"] = index;
+            item["No PO Internal"] = report.poIntNo;
+            item["No RO"] = report.roNo;
+            item["Plan PO"] = report.planPO;
+            item["Article / Style"] = report.artikelNo;
+            item["Nama Buyer"] = report.buyerName;
+            item["Unit"] = report.unit;
+            item["Kategori"] = report.category;
+            item["Kode Barang"] = report.productCode;
+            item["Nama Barang"] = report.productName;
+            item["Jumlah Barang"] = report.productQuantity;
+            item["Satuan Barang"] = report.productUom;
+            item["Harga Barang"] = report.productPrice;
+            item["Kode Supplier"] = report.supplierCode;
+            item["Nama Supplier"] = report.supplierName;
+            item["Tanggal PO Internal"] = moment(new Date(report.poIntCreatedDate)).add(7, 'h').format(dateFormat);
+            item["Tanggal PO Eksternal"] = moment(new Date(report.poEksCreatedDate)).add(7, 'h').format(dateFormat);
+            item["Tanggal Target Datang"] = moment(new Date(report.expectedDate)).add(7, 'h').format(dateFormat);
+            item["No PO Eksternal"] = report.poEksNo;
+            item["No Surat Jalan"] = report.deliveryOrderNo;
+            item["Tanggal Surat Jalan"] = moment(new Date(report.supplierDoDate)).add(7, 'h').format(dateFormat);
+            item["Selisih Tanggal PO Eksternal - Surat Jalan  (hari)"] = dateDiff;
+            item["Nama Staff Pembelian"] = report.staff;
+
+            xls.data.push(item);
+        }
+
+        xls.options = {
+            "No": "number",
+            "No Po Internal": "string",
+            "No RO": "string",
+            "Plan PO": "string",
+            "Article / Style": "string",
+            "Nama Buyer": "string",
+            "Unit": "string",
+            "Kategori": "string",
+            "Kode Barang": "string",
+            "Nama Barang": "string",
+            "Jumlah Barang": "number",
+            "Satuan Barang": "string",
+            "Harga Barang": "number",
+            "Kode Supplier": "string",
+            "Nama Supplier": "string",
+            "Tanggal PO Internal": "string",
+            "Tanggal PO Eksternal": "string",
+            "Tanggal Target Datang": "string",
+            "No PO Eksternal": "string",
+            "No Surat Jalan": "string",
+            "Tanggal Surat Jalan": "string",
+            "Selisih Tanggal PO Eksternal - Surat Jalan (hari)": "number",
+            "Nama Staff Pembelian": "string"
+        };
+
+        if (query.dateFrom && query.dateTo) {
+            xls.name = `LAPORAN DURASI PO EKSTERNAL - SURAT JALAN  GARMENT ${moment(new Date(query.dateFrom)).format(dateFormat)} - ${moment(new Date(query.dateTo)).format(dateFormat)}.xlsx`;
+        }
+        else if (!query.dateFrom && query.dateTo) {
+            xls.name = `LAPORAN DURASI PO EKSTERNAL - SURAT JALAN GARMENT ${moment(new Date(query.dateTo)).format(dateFormat)}.xlsx`;
+        }
+        else if (query.dateFrom && !query.dateTo) {
+            xls.name = `LAPORAN DURASI PO EKSTERNAL - SURAT JALAN GARMENT ${moment(new Date(query.dateFrom)).format(dateFormat)}.xlsx`;
+        }
+        else
+            xls.name = `LAPORAN DURASI PO EKSTERNAL - SURAT JALAN GARMENT.xlsx`;
+
+        return Promise.resolve(xls);
+    }    
 };

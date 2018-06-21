@@ -30,6 +30,8 @@ const selectedFields = {
     "kanban.productionOrder.orderType.name": 1,
     "kanban.productionOrder.orderNo": 1,
     "badOutputReasons.precentage": 1,
+    "badOutputReasons.length": 1,
+    "badOutputReasons.action": 1,
     "badOutputReasons.description": 1,
     "badOutputReasons.badOutputReason.code": 1,
     "badOutputReasons.badOutputReason.reason": 1,
@@ -76,7 +78,7 @@ module.exports = class FactDailyOperationEtlManager extends BaseManager {
             .then((data) => this.transform(data))
             .then((data) => this.load(data))
             .then((results) => {
-                console.log("Success!")
+                console.log("Success!");
                 var finishedDate = new Date();
                 var spentTime = moment(finishedDate).diff(moment(startedDate), "minutes");
                 var updateLog = {
@@ -89,6 +91,7 @@ module.exports = class FactDailyOperationEtlManager extends BaseManager {
                 this.migrationLog.updateOne({ start: startedDate }, updateLog);
             })
             .catch((err) => {
+                console.log("Failed!");
                 var finishedDate = new Date();
                 var spentTime = moment(finishedDate).diff(moment(startedDate), "minutes");
                 var updateLog = {
@@ -115,7 +118,7 @@ module.exports = class FactDailyOperationEtlManager extends BaseManager {
         var inputArr = [];
         return this.dailyOperationManager.collection.find({
             _updatedDate: {
-                $gte: timestamp
+                "$gte": timestamp
             }
         }, {
                 "code": 1
@@ -220,8 +223,9 @@ module.exports = class FactDailyOperationEtlManager extends BaseManager {
                         dailyOperationCode: `'${item.code}'`,
                         badOutputReasonCode: reasonObj.badOutputReason ? `'${reasonObj.badOutputReason.code}'` : null,
                         reason: reasonObj.badOutputReason ? `'${reasonObj.badOutputReason.reason.replace(/'/g, '"')}'` : null,
-                        percentage: reasonObj.precentage ? `${reasonObj.precentage}` : 0,
+                        length: reasonObj.length ? `${reasonObj.length}` : 0,
                         description: reasonObj.description ? `'${reasonObj.description.replace(/'/g, '"')}'` : null,
+                        action: reasonObj.action ? `'${reasonObj.action.replace(/'/g, '"')}'` : item.action ? `'${item.action.replace(/'/g, '"')}'` : null
                     };
                 })
 
@@ -290,18 +294,18 @@ module.exports = class FactDailyOperationEtlManager extends BaseManager {
                         }
 
                         if (data.badOutputReasons && data.badOutputReasons.length > 0) {
-                            var sqlQueryReason = 'INSERT INTO [DL_Fact_Daily_Operation_Reason_Temp](dailyOperationCode, badOutputReasonCode, reason, percentage, description) ';
+                            var sqlQueryReason = 'INSERT INTO [DL_Fact_Daily_Operation_Reason_Temp](dailyOperationCode, badOutputReasonCode, reason, length, description, action) ';
 
                             var countReason = 1;
 
                             for (var item of data.badOutputReasons) {
                                 if (item) {
-                                    var queryString = `\nSELECT ${item.dailyOperationCode}, ${item.badOutputReasonCode}, ${item.reason}, ${item.percentage}, ${item.description} UNION ALL `;
+                                    var queryString = `\nSELECT ${item.dailyOperationCode}, ${item.badOutputReasonCode}, ${item.reason}, ${item.length}, ${item.description}, ${item.action} UNION ALL `;
                                     sqlQueryReason = sqlQueryReason.concat(queryString);
                                     if (countReason % 1000 === 0) {
                                         sqlQueryReason = sqlQueryReason.substring(0, sqlQueryReason.length - 10);
                                         command.push(this.insertQuery(request, sqlQueryReason));
-                                        sqlQueryReason = "INSERT INTO [DL_Fact_Daily_Operation_Reason_Temp](dailyOperationCode, badOutputReasonCode, reason, percentage, description) ";
+                                        sqlQueryReason = "INSERT INTO [DL_Fact_Daily_Operation_Reason_Temp](dailyOperationCode, badOutputReasonCode, reason, length, description, action) ";
                                     }
                                     console.log(`add data to query  : ${countReason}`);
                                     countReason++;
@@ -317,9 +321,9 @@ module.exports = class FactDailyOperationEtlManager extends BaseManager {
                         this.sql.multiple = true;
 
                         // var fs = require("fs");
-                        // var path = "C:\\Users\\jacky.rusly\\Desktop\\daily.txt";
+                        // var path = "C:\\Users\\leslie.aula\\Desktop\\daily.txt";
 
-                        // fs.writeFile(path, sqlQueryReason, function (error) {
+                        // fs.writeFile(path, sqlQuery, function (error) {
                         //     if (error) {
                         //         console.log("write error:  " + error.message);
                         //     } else {

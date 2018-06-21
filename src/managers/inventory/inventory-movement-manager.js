@@ -77,6 +77,9 @@ module.exports = class InventoryMovementManager extends BaseManager {
                         _id: null,
                         quantity: {
                             '$sum': '$quantity'
+                        },
+                        stockPlanning: {
+                            '$sum': '$stockPlanning'
                         }
                     }
                 }]).toArray().then(results => results[0]);
@@ -87,7 +90,8 @@ module.exports = class InventoryMovementManager extends BaseManager {
                     .then(results => {
                         var sum = results[0];
                         var summary = results[1];
-                        summary.quantity = sum.quantity;
+                        summary.quantity = parseFloat(sum.quantity.toFixed(2));
+                        summary.stockPlanning = parseFloat(sum.stockPlanning.toFixed(2));
                         return this.inventorySummaryManager.update(summary)
                     })
                     .then(sumId => id)
@@ -154,6 +158,14 @@ module.exports = class InventoryMovementManager extends BaseManager {
                 valid.uomId = _uom._id;
                 valid.uom = _uom.unit;
 
+                valid.stockPlanning = valid.referenceType == "Bon Pengantar Greige" ? valid.type == "OUT" ? valid.stockPlanning : valid.stockPlanning * -1 : valid.quantity;
+
+
+                if (valid.referenceType == "Surat Permintaan Barang") {
+                    valid.stockPlanning = valid.type == "OUT" ? valid.quantity * -1 : valid.quantity;
+                    valid.quantity = 0;
+                }
+
                 if (valid.type == "OUT") {
                     valid.quantity = valid.quantity * -1;
                 }
@@ -162,6 +174,7 @@ module.exports = class InventoryMovementManager extends BaseManager {
 
                 if (valid.type == "ADJ") {
                     valid.after = valid.quantity;
+                    valid.stockPlanning = valid.quantity;
                 } else {
                     valid.after = _dbInventorySummary.quantity + valid.quantity;
                 }
@@ -210,12 +223,25 @@ module.exports = class InventoryMovementManager extends BaseManager {
         return this.inventoryDocumentCollection.find({
             _deleted: false,
             date: query
-        }, { "referenceNo": 1 }).toArray()
+        }, { "referenceNo": 1, "date": 1 }).toArray()
             .then((data) => {
-                var referenceNumbers = data.map((inventoryDocument) => {
-                    return inventoryDocument.referenceNo;
-                })
-                return Promise.resolve(referenceNumbers)
+                var result = {
+                    referenceNumbers: [],
+                    inventoryDocumentsDate: []
+                };
+
+                for (let d of data) {
+                    result.referenceNumbers.push(d.referenceNo);
+                    result.inventoryDocumentsDate.push({
+                        referenceNo: d.referenceNo,
+                        date: d.date
+                    });
+                }
+
+                // var referenceNumbers = data.map((inventoryDocument) => {
+                //     return { referenceNo: inventoryDocument.referenceNo, date: date };
+                // })
+                return Promise.resolve(result)
             })
     }
 
@@ -227,9 +253,12 @@ module.exports = class InventoryMovementManager extends BaseManager {
             order = info.order || {};
 
         var dateFrom = info.dateFrom ? (new Date(info.dateFrom)) : (new Date(1900, 1, 1));
-        var dateTo = info.dateTo ? (new Date(info.dateTo + "T23:59")) : (new Date());
+        var dateTo = info.dateTo ? (new Date(info.dateTo + "T23:59")) : new Date(new Date().setHours(23, 59, 59, 0));
+        dateFrom.setHours(dateFrom.getHours() - info.offset);
+        dateTo.setHours(dateTo.getHours() - info.offset);
 
         var filterMovement = {};
+        let inventoryDocumentsDate = [];
 
         if (info.storageId)
             filterMovement.storageId = new ObjectId(info.storageId);
@@ -246,11 +275,14 @@ module.exports = class InventoryMovementManager extends BaseManager {
         }
 
         return this.getReferenceNo(dateQuery)
-            .then((referenceNumbers) => {
+            .then((result) => {
                 filterMovement.referenceNo = {
-                    $in: referenceNumbers
+                    $in: result.referenceNumbers
                 };
-                var data = this._createIndexes()
+
+                inventoryDocumentsDate = result.inventoryDocumentsDate;
+
+                return this._createIndexes()
                     .then((createIndexResults) => {
                         query = { '$and': [_defaultFilter, filterMovement] };
                         return !info.xls ?
@@ -263,9 +295,17 @@ module.exports = class InventoryMovementManager extends BaseManager {
                                 .page(info.page, info.size)
                                 .order(order)
                                 .execute();
+                    })
+                    .then(response => {
+                        for (let d of response.data) {
+                            let inventoryDocument = inventoryDocumentsDate.find(p => p.referenceNo == d.referenceNo);
+
+                            d.date = inventoryDocument.date;
+                        }
+
+                        return Promise.resolve(response);
                     });
-                return Promise.resolve(data);
-            })
+            });
     }
 
     getXls(result, filter) {

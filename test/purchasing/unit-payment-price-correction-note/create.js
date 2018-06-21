@@ -104,6 +104,9 @@ it('#05. should success when get data with Start Date', function (done) {
                         name :"sdsd",
 
                     },
+                    currency: {
+                        code : "sss",
+                    },
                     uom :
                     {unit : "PCS"},
                     
@@ -112,7 +115,11 @@ it('#05. should success when get data with Start Date', function (done) {
                 unitPaymentOrder : 
                 {
                     supplier : {
-                        name : "ddd"
+                        name : "ddd",
+                        code : "eee"
+                    },
+                    category : {
+                        name : "ddd",
                     },
                 },
             
@@ -122,6 +129,7 @@ it('#05. should success when get data with Start Date', function (done) {
             "Jumlah":100,
             "HARGA":2000,
             "TOTAL":2000,
+            "useIncomeTax":true,
             "_createdBy":"AAA"
         }];
             po.should.instanceof(Array);
@@ -142,6 +150,17 @@ it('#06. should success when get data for Excel Report q', function (done) {
             xlsData.should.have.property('name');
             done();
         }).catch(e => {
+            done(e);
+        });
+});
+
+
+it("#07. should success when read data", function (done) {
+    unitPaymentPriceCorrectionNoteManager.read({ "keyword": "test" })
+        .then((data) => {
+            done();
+        })
+        .catch((e) => {
             done(e);
         });
 });

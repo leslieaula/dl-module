@@ -12,6 +12,9 @@ var UnitReceiptNoteManager = require('./unit-receipt-note-manager');
 var BaseManager = require('module-toolkit').BaseManager;
 var generateCode = require('../../utils/code-generator');
 var poStatusEnum = DLModels.purchasing.enum.PurchaseOrderStatus;
+var moment = require('moment');
+
+const NUMBER_DESCRIPTION = "Surat Perintah Bayar";
 
 module.exports = class UnitPaymentOrderManager extends BaseManager {
 
@@ -20,6 +23,7 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
         this.collection = this.db.use(map.purchasing.collection.UnitPaymentOrder);
         this.purchaseOrderManager = new PurchaseOrderManager(db, user);
         this.unitReceiptNoteManager = new UnitReceiptNoteManager(db, user);
+        this.documentNumbers = this.db.collection("document-numbers");
         this.unitReceiptNoteFields = ["no",
             "date",
             "deliveryOrder.no",
@@ -38,6 +42,7 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
             "items.correction",
             "items.purchaseOrderId",
             "items.purchaseOrder._id",
+            "items.purchaseOrder.purchaseOrderExternal.paymentDueDays",
             "items.purchaseOrder.purchaseOrderExternal.no",
             "items.purchaseOrder.purchaseOrderExternal._id",
             "items.purchaseOrder.currency._id",
@@ -125,9 +130,9 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                     else if (!valid.category) {
                         errors["category"] = i18n.__("UnitPaymentOrder.category.isRequired:%s name is required", i18n.__("UnitPaymentOrder.category._:Category")); //"Category tidak boleh kosong";
                     }
-                    if (!valid.dueDate || valid.dueDate == '') {
-                        errors["dueDate"] = i18n.__("UnitPaymentOrder.dueDate.isRequired:%s is required", i18n.__("UnitPaymentOrder.dueDate._:DueDate")); //tanggal jatuh tempo tidak boleh kosong";
-                    }
+                    // if (!valid.dueDate || valid.dueDate == '') {
+                    //     errors["dueDate"] = i18n.__("UnitPaymentOrder.dueDate.isRequired:%s is required", i18n.__("UnitPaymentOrder.dueDate._:DueDate")); //tanggal jatuh tempo tidak boleh kosong";
+                    // }
                     if (!valid.paymentMethod || valid.paymentMethod == '') {
                         errors["paymentMethod"] = i18n.__("UnitPaymentOrder.paymentMethod.isRequired:%s is required", i18n.__("UnitPaymentOrder.paymentMethod._:PaymentMethod")); //Term pembayaran tidak boleh kosong";
                     }
@@ -202,12 +207,13 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                     }
                     valid.divisionId = new ObjectId(valid.divisionId);
                     valid.division = valid.division;
+                    valid.pibNo = valid.pibNo;
                     valid.division._id = new ObjectId(valid.division._id);
                     valid.supplierId = new ObjectId(valid.supplierId);
                     valid.supplier._id = new ObjectId(valid.supplierId);
                     valid.date = new Date(valid.date);
                     valid.invoceDate = new Date(valid.invoceDate);
-                    valid.dueDate = new Date(valid.dueDate);
+                    //valid.dueDate = new Date(valid.dueDate);
 
                     if (valid.category != null) {
                         valid.categoryId = new ObjectId(valid.categoryId);
@@ -244,18 +250,19 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
         });
     }
 
-    getDataMonitorSpb(unitId, PRNo, noSpb, supplierId, dateFrom, dateTo, staffName, offset) {
+   getDataMonitorSpb(unitId, supplierId, dateFrom, dateTo, offset) {
         return new Promise((resolve, reject) => {
             var qryMatch = {};
             var nilai = {};
             qryMatch["$and"] = [
                 { "_deleted": false }];
 
-            if (dateFrom && dateFrom !== "" && dateFrom != "undefined" && dateTo && dateTo !== "" && dateTo != "undefined") {
+
+           if (dateFrom !== "undefined" && dateFrom !== "" && dateFrom !== "null" && dateTo !== "undefined" && dateTo !== "" && dateTo !== "null") {
                 var validStartDate = new Date(dateFrom);
                 var validEndDate = new Date(dateTo);
-                // validStartDate.setHours(validStartDate.getHours() - offset);
-                //validEndDate.setHours(validEndDate.getHours() - offset);
+                 validStartDate.setHours(validStartDate.getHours() - offset);
+                validEndDate.setHours(validEndDate.getHours() - offset);
                 qryMatch["$and"].push(
                     {
                         "date": {
@@ -268,43 +275,19 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                 )
             }
 
-            if (unitId !== "") {
-                qryMatch["$and"].push({
-                    "items.unitReceiptNote.unitId": new ObjectId(unitId)
+         
 
+            if (supplierId !== "undefined" && supplierId !== "") {
+                qryMatch["$and"].push({
+             supplierId: new ObjectId(supplierId)
                 })
             }
 
-            if (supplierId !== "") {
-                qryMatch["$and"].push({
-                    "supplierId": new ObjectId(supplierId)
-
-                })
+       
+            var nilai={};
+if (unitId !== undefined && unitId !== "") {
+                nilai = { "pr_docs.unitId": new ObjectId(unitId) };
             }
-
-            //   if (staffName!=="") {
-            //                 qryMatch["$and"].push({
-            //                       "do_docs._createdBy":staffName
-            //                 })
-            //             }
-            if (staffName !== undefined && staffName !== "") {
-                nilai = { "do_docs._createdBy": staffName };
-            }
-
-            if (PRNo !== "") {
-                qryMatch["$and"].push({
-                    "items.unitReceiptNote.items.purchaseOrder.purchaseRequest.no": PRNo
-
-                })
-            }
-
-            if (noSpb !== "") {
-                qryMatch["$and"].push({
-                    "no": noSpb
-
-                })
-            }
-
             this.collection.aggregate(
                 [
                     {
@@ -329,32 +312,8 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                     {
                         $unwind: "$pr_docs"
                     },
-                    {
-                        $lookup:
-                            {
-                                from: "delivery-orders",
-                                localField: "items.unitReceiptNote.deliveryOrder.no",
-                                foreignField: "no",
-                                as: "do_docs"
-                            }
-                    },
-                    //      {
-                    //    $lookup:
-                    //      {
-                    //        from: "purchase-orders",
-                    //        localField: "items.unitReceiptNote.items.purchaseOrder.no",
-                    //        foreignField: "no",
-                    //        as: "do_docs"
-                    //      }
-                    // },
-                    // {
-                    //                     $unwind:"$do_docs"
-                    //                 },
-                    { $match: nilai },
-                    //   {
-                    //      $match: qryMatch
-                    //  },
-
+                     { $match: nilai },
+                  
                     {
                         $project: {
                             no: "$no",
@@ -366,19 +325,23 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                             invoceDate: "$invoceDate",
                             invoceNo: "$invoceNo",
                             dueDate: "$dueDate",
-                            "supplier.name": "$supplier.name",
+                            "suppliernm": "$supplier.name",
                             "division.name": "$division.name",
                             "useIncomeTax": "$useIncomeTax",
                             "useVat": "$useVat",
                             "vat.rate": "$vat.rate",
-                            //"namaUnit": "$items.unitReceiptNote.unit.name",
                             "namaUnit": "$pr_docs.unit.name",
                             "items.unitReceiptNote.items.purchaseOrder.purchaseRequest.no": "$items.unitReceiptNote.items.purchaseOrder.purchaseRequest.no",
                             "items.unitReceiptNote.items.purchaseOrder.purchaseRequest.date": "$pr_docs.date",
                             "items.unitReceiptNote.no": "$items.unitReceiptNote.no",
-                            "staff": "$do_docs._createdBy",
-                            //"staff":"$_createdBy",
                             "items.unitReceiptNote.date": "$items.unitReceiptNote.date",
+                             "codesupplier": "$supplier.code",
+                            "satuan": "$items.unitReceiptNote.items.deliveredUom.unit",
+                            "matauang": "$items.unitReceiptNote.items.currency.code",
+                            "kdkategori": "$category.code",
+                            "kategori": "$category.name",
+                              "tgltambah": "$items.unitReceiptNote.items.purchaseOrder.purchaseOrderExternal.paymentDueDays",
+                            "noserippn": "$incomeTaxNo",
                         }
                     },
 
@@ -392,7 +355,6 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                 });
         });
     }
-
 
     _getQuery(paging) {
         var deletedFilter = {
@@ -436,8 +398,74 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
     }
 
     _beforeInsert(unitPaymentOrder) {
-        unitPaymentOrder.no = generateCode();
-        return Promise.resolve(unitPaymentOrder)
+        var monthNow = moment(unitPaymentOrder.date).format("MM");
+        var yearNow = parseInt(moment(unitPaymentOrder.date).format("YY"));
+        var code="";
+        // var unitCode=unitPaymentOrder.division ? unitPaymentOrder.division.code : "";
+        if(unitPaymentOrder && unitPaymentOrder.supplier){
+            code= unitPaymentOrder.supplier.import ? "NKI" : "NKL";
+        }
+        var division="";
+        if(unitPaymentOrder && unitPaymentOrder.division){
+            if(unitPaymentOrder.division.name=="GARMENT"){
+                division="-G";
+            }
+            else if(unitPaymentOrder.division.name=="UMUM" || unitPaymentOrder.division.name=="SPINNING" || unitPaymentOrder.division.name=="FINISHING & PRINTING" || unitPaymentOrder.division.name=="UTILITY"|| unitPaymentOrder.division.name=="WEAVING"){
+                division="-T";
+            }
+        }
+        var type = code+monthNow+yearNow+division;
+        var query = { "type": type, "description": NUMBER_DESCRIPTION };
+        var fields = { "number": 1, "year": 1 };
+
+        return this.documentNumbers
+            .findOne(query, fields)
+            .then((previousDocumentNumber) => {
+
+                var number = 1;
+
+                if (!unitPaymentOrder.no) {
+                    if (previousDocumentNumber) {
+                        var oldYear = previousDocumentNumber.year;
+                        number = yearNow > oldYear ? number : previousDocumentNumber.number + 1;
+                        if(code=="NKL")
+                            unitPaymentOrder.no = `${yearNow}-${monthNow}${division}-${code}-${this.pad(number, 4)}`;
+                        else if(code=="NKI")
+                            unitPaymentOrder.no = `${yearNow}-${monthNow}${division}-${code}-${this.pad(number, 3)}`;
+                    } else {
+                        if(code=="NKL")
+                            unitPaymentOrder.no = `${yearNow}-${monthNow}${division}-${code}-0001`;
+                        else if(code=="NKI")
+                            unitPaymentOrder.no = `${yearNow}-${monthNow}${division}-${code}-001`;
+                    }
+                }
+
+                var documentNumbersData = {
+                    type: type,
+                    documentNumber: unitPaymentOrder.no,
+                    number: number,
+                    year: yearNow,
+                    description: NUMBER_DESCRIPTION
+                };
+
+                var options = { "upsert": true };
+
+                return this.documentNumbers
+                    .updateOne(query, documentNumbersData, options)
+                    .then((id) => {
+                        return Promise.resolve(unitPaymentOrder);
+                    })
+            })
+    }
+
+    pad(number, length) {
+
+        var str = '' + number;
+        while (str.length < length) {
+            str = '0' + str;
+        }
+
+        return str;
     }
 
     _afterInsert(id) {
@@ -1014,6 +1042,7 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                         "items.unitReceiptNote.no",
                         "items.unitReceiptNote.date",
                         "items.unitReceiptNote.items.purchaseOrder.purchaseOrderExternal.no",
+                        "items.unitReceiptNote.items.purchaseOrder.purchaseOrderExternal.paymentDueDays",
                         "items.unitReceiptNote.items.purchaseOrder.items.product",
                         "items.unitReceiptNote.items.purchaseOrder.items.useIncomeTax",
                         "items.unitReceiptNote.items.purchaseOrder.purchaseRequest.no",
@@ -1033,5 +1062,66 @@ module.exports = class UnitPaymentOrderManager extends BaseManager {
                         });
                 });
             });
+    }
+
+    updatePosition(data) {
+        return this
+            .collection
+            .updateMany({ "no": { "$in": data.unitPaymentOrders } },
+                {
+                    "$set": {
+                        "position": data.position,
+                        "_updatedBy": this.user.username,
+                        "_updatedDate": new Date()
+                    }
+                });
+    }
+
+    getExpeditionReport(paging, offset) {
+        let filter = paging.filter;
+        let filterApply = {};
+
+        if (filter.no)
+            filterApply.no = filter.no;
+
+        if (filter.supplierCode)
+            filterApply['supplier.code'] = filter.supplierCode;
+        
+        if (filter.divisionCode)
+            filterApply['division.code'] = filter.divisionCode;
+
+        if (filter.status)
+            filterApply.position = filter.status;
+
+        if (filter.dateFrom && filter.dateTo) {
+            let validStartDate = new Date(filter.dateFrom);
+            let validEndDate = new Date(filter.dateTo);
+            validStartDate.setHours(validStartDate.getHours() - offset);
+            validEndDate.setHours(23, 59, 59);
+            validEndDate.setHours(validEndDate.getHours() - offset);
+            
+            filterApply.date = {
+                $gte: validStartDate,
+                $lte: validEndDate,
+            };
+        }
+
+        paging.filter = filterApply;
+
+        let _paging = Object.assign({
+            page: 1,
+            size: 20,
+            order: {},
+            filter: {},
+            select: []
+        }, paging);
+
+        let query = this._getQuery(_paging);
+        return this.collection
+            .where(query)
+            .select(_paging.select)
+            .page(_paging.page, _paging.size)
+            .order(_paging.order)
+            .execute();
     }
 };

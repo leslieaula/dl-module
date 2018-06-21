@@ -29,9 +29,7 @@ module.exports = class WeeklyPlanManager extends BaseManager {
         if (paging.keyword) {
             var regex = new RegExp(paging.keyword, "i");
             var yearFilter = {
-                "year": {
-                    "$regex": regex
-                }
+                "$where" : "function() { return this.year.toString().match(/"+ paging.keyword +"/) != null; }"
             };
             var unitFilter = {
                 "unit.name": {
@@ -94,10 +92,12 @@ module.exports = class WeeklyPlanManager extends BaseManager {
                         } else if (item.startDate.getMonth() != item.month && item.endDate.getMonth() != item.month) {
                             itemError["month"] = i18n.__("WeeklyPlan.items.month.isOutOfRange:%s is out of range", i18n.__("WeeklyPlan.items.month._:Month"));
                         }
-                        if(!item.efficiency || item.efficiency <= 0)
-                            itemError["efficiency"] = i18n.__("WeeklyPlan.items.efficiency.mustBeGreaterThan:%s must be greather than 0", i18n.__("WeeklyPlan.items.efficiency._:Efficiency"));
-                        if(!item.operator || item.operator <= 0)
-                            itemError["operator"] = i18n.__("WeeklyPlan.items.operator.mustBeGreaterThan:%s must be greather than 0", i18n.__("WeeklyPlan.items.operator._:Operator"));
+                        // if(!item.efficiency || item.efficiency <= 0)
+                        //     itemError["efficiency"] = i18n.__("WeeklyPlan.items.efficiency.mustBeGreaterThan:%s must be greather than 0", i18n.__("WeeklyPlan.items.efficiency._:Efficiency"));
+                        // if(!item.operator || item.operator <= 0)
+                        //     itemError["operator"] = i18n.__("WeeklyPlan.items.operator.mustBeGreaterThan:%s must be greather than 0", i18n.__("WeeklyPlan.items.operator._:Operator"));
+                        // if(!item.workingHours || item.workingHours <= 0)
+                        //     itemError["workingHours"] = i18n.__("WeeklyPlan.items.workingHours.mustBeGreaterThan:%s must be greather than 0", i18n.__("WeeklyPlan.items.workingHours._:WorkingHours"));
                         itemErrors.push(itemError);
                     }
 
@@ -160,25 +160,276 @@ module.exports = class WeeklyPlanManager extends BaseManager {
 
     getWeek(keyword, filter){
         return new Promise((resolve, reject) => {
+            var query={};
+            if(filter.weekNumber){
+                query={
+                    "year": filter.year,
+                    "unit.code":filter.unit,
+                    "items.weekNumber":filter.weekNumber,
+                    _deleted:false
+                }
+            }
+            else{
+                query={
+                    "year": filter.year,
+                    "unit.code":filter.unit,
+                    _deleted:false
+                }
+            }
+
             var regex = new RegExp(keyword, "i");
+            var filterWeek = {
+                "week": {
+                    "$regex": regex
+                }
+            };
+
             this.collection.aggregate(
                 [
-                     {$unwind:"$items"},
-                    {
-                   
-                    $match: {
-                        "year": filter.year,
-                        "unit.code":filter.unit,
-                        _deleted:false
-
-                    }
-                },
-            {$project: {'items':"$items"}}
+                    { $unwind:"$items" },
+                    { $match: query },
+                    { $project: {
+                        'items': "$items",
+                        'week': {"$concat" : ["W",{ "$toLower" : "$items.weekNumber" }]},
+                    } },
+                    { $match: filterWeek },
                 ]
             )
                 .toArray(function (err, result) {
                     resolve(result);
                 });
+        });
+    }
+
+    getYear(keyword){
+        return new Promise((resolve, reject) => {
+            var regex = new RegExp(keyword, "i");
+            var query = {
+                stringifyYear : regex,
+                _deleted : false,
+            };
+            this.collection.aggregate(
+                [
+                    { $project : {
+                        stringifyYear : { "$toLower" : "$year" },
+                        year : 1,
+                        _deleted : 1
+                    } },
+                    { $match : query},
+                    { $group : {
+                        _id: "$year",
+                        year: {$first : "$year"},
+                    } },
+                ]
+            )
+                .toArray(function (err, result) {
+                    resolve(result);
+                });
+        });
+    }
+
+
+    getUnit(keyword, filter){
+        return new Promise((resolve, reject) => {
+            var regex = new RegExp(keyword, "i");
+
+            var unitCodeFilter = {
+                "unit.code": {
+                    "$regex": regex
+                }
+            };
+
+            var unitNameFilter = {
+                "unit.name": {
+                    "$regex": regex
+                }
+            };
+
+            var keywordFilter = {};
+            keywordFilter["$or"] = [unitCodeFilter, unitNameFilter];
+
+            var yearFilter = {};
+
+            if (filter) {
+                yearFilter = { year: filter.year };
+            }
+
+            var deletedFilter = { _deleted: false };
+
+            var query = {};
+            query["$and"] = [keywordFilter, yearFilter, deletedFilter];
+
+            this.collection.distinct(
+                "unit",
+                query,
+                function (err, result) {
+                    resolve(result);
+                }
+            );
+        });
+    }
+
+    getMonitoringRemainingEH(query) {
+        return new Promise((resolve, reject) => {
+            var deletedQuery = { _deleted: false };
+            var yearQuery = {};
+            if (query.year) {
+                yearQuery = {
+                    "year": Number(query.year)
+                };
+            }
+            var unitQuery = {};
+            if (query.unit) {
+                unitQuery = {
+                    "unit.code": query.unit
+                };
+            }
+
+            var Query = { "$and": [ deletedQuery, yearQuery, unitQuery ] };
+            this.collection
+                .aggregate( [
+                    { "$match": Query },
+                    {
+                        "$sort": {
+                            "unit.code": 1,
+                        }
+                    }
+                ])
+                .toArray(function (err, result) {
+                    resolve(result);
+                });
+        });
+    }
+
+    getMonitoringRemainingEHXls(dataReport, query) {
+        return new Promise((resolve, reject) => {
+            var xls = {};
+            xls.data = [];
+            xls.options = {};
+            xls.name = '';
+
+            var units = [];
+            for (var x = 0; x < dataReport.data.length; x++) {
+              for (var y = 0; y < dataReport.data[x].items.length; y++) {
+                var unit = {
+                  code: dataReport.data[x].unit.code,
+                  remainingEH: dataReport.data[x].items[y].remainingEH
+                };
+                var unitsTemp = units[y] ? units[y] : [];
+                unitsTemp.push(unit);
+                units[y] = unitsTemp;
+              }
+            }
+            // console.log(units);
+  
+            var weeks = [];
+            for (var x = 0; x < units.length; x++) {
+              var headCount = 0;
+              var remainingEH=0;
+              for (var y = 0; y < units[x].length; y++) {
+                headCount += Number(dataReport.data[y].items[x].operator);
+                remainingEH += Number(dataReport.data[y].items[x].remainingEH);
+              }
+              var week = {
+                week: "W" + (x + 1),
+                units: units[x],
+                headCount: headCount,
+                eh:remainingEH
+              };
+              weeks.push(week);
+            }
+
+            for (var week of weeks) {
+                var item = {};
+                item["Unit"] = week.week;
+                for (unit of week.units) {
+                    item[unit.code] = unit.remainingEH;
+                }
+                item["Total Remaining EH"] = week.eh;
+                item["Head Count"] = week.headCount;
+                xls.data.push(item);
+            }
+
+            var border = {
+                top: { style: 'thin', color: 'FF000000' },
+                bottom: { style: 'thin', color: 'FF000000' },
+                left: { style: 'thin', color: 'FF000000' },
+                right: { style: 'thin', color: 'FF000000' },
+            };
+
+            var fgColor = function(color){
+                return {
+                    fgColor: {
+                        rgb: color
+                    }
+                };
+            };
+
+            var styles = {
+                header: {
+                    fill: fgColor('FFCCCCCC'),
+                    border: border,
+                    alignment: {
+                        horizontal: 'center'
+                    },
+                    font: {
+                        bold: true
+                    }
+                },
+                cell: {
+                    fill: fgColor('FFFFFFFF'),
+                    border: border
+                },
+                cellRed: {
+                    fill: fgColor('FFFF0000'),
+                    border: border
+                },
+                cellGreen: {
+                    fill: fgColor('FF00FF00'),
+                    border: border
+                },
+                cellYellow: {
+                    fill: fgColor('FFFFFF00'),
+                    border: border
+                }
+            };
+
+            xls.options.specification = {};
+            xls.options.specification["Unit"] = {
+                displayName : "Unit",
+                width: 50,
+                headerStyle: styles.header,
+                cellStyle: styles.cell
+            };
+            for (unit of week.units) {
+                xls.options.specification[unit.code] = {
+                    displayName : unit.code,
+                    width: 100,
+                    headerStyle: styles.header,
+                    cellStyle : (value, row) => {
+                        return (value > 0) ? styles.cellYellow :
+                        (value < 0) ? styles.cellRed :
+                        styles.cellGreen;
+                    }
+                };
+            }
+            if(!query.unit)
+                xls.options.specification["Total Remaining EH"] = {
+                    displayName : "Total Remaining EH",
+                    width: 120,
+                    headerStyle: styles.header,
+                    cellStyle: styles.cell
+                };
+            xls.options.specification["Head Count"] = {
+                displayName : "Head Count",
+                width: 100,
+                headerStyle: styles.header,
+                cellStyle: styles.cell
+            };
+
+            xls.name = `Remaining EH Report ` + (query.unit ? `${query.unit}-` : ``) + `${query.year}.xlsx`;
+
+            resolve(xls);
         });
     }
 

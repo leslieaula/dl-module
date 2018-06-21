@@ -440,11 +440,11 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
                                                     if (Object.getOwnPropertyNames(items.uomConversion).length > 0 && Object.getOwnPropertyNames(items.dealUom).length > 0) {
                                                         if (items.uomConversion.unit.toString() === items.dealUom.unit.toString()) {
                                                             if (items.conversion !== 1) {
-                                                                itemError["conversion"] = i18n.__("PurchaseOrderExternal.items.conversion.mustOne:%s must be 1", i18n.__("PurchaseOrderExternal.items.conversion._:Conversion"));
+                                                                // itemError["conversion"] = i18n.__("PurchaseOrderExternal.items.conversion.mustOne:%s must be 1", i18n.__("PurchaseOrderExternal.items.conversion._:Conversion"));
                                                             }
                                                         } else {
                                                             if (items.conversion === 1) {
-                                                                itemError["conversion"] = i18n.__("PurchaseOrderExternal.items.conversion.mustNotOne:%s must not be 1", i18n.__("PurchaseOrderExternal.items.conversion._:Conversion"));
+                                                                // itemError["conversion"] = i18n.__("PurchaseOrderExternal.items.conversion.mustNotOne:%s must not be 1", i18n.__("PurchaseOrderExternal.items.conversion._:Conversion"));
                                                             }
                                                         }
                                                     } else {
@@ -861,7 +861,7 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
                     })
                     for (var pr of prId) {
                         if (ObjectId.isValid(pr)) {
-                            getPurchaseRequests.push(this.purchaseRequestManager.getSingleByIdOrDefault(pr, ["artikel", "items.product._id", "items.colors", "no", "_id"]));
+                            getPurchaseRequests.push(this.purchaseRequestManager.getSingleByIdOrDefault(pr, ["artikel", "items.product._id", "items.colors", "no", "_id", "shipmentDate"]));
                         }
                     }
                     Promise.all(getPurchaseRequests)
@@ -871,6 +871,7 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
                                 var _prItem = _pr.items.find((prItem) => prItem.product._id.toString() === item.product._id.toString())
                                 item.colors = _prItem.colors || []
                                 item.artikel = _pr.artikel;
+                                item.shipmentDate = _pr.shipmentDate;
                             }
 
                             var getDefinition;
@@ -1262,7 +1263,7 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
         }
     }
 
-    getAllData(startdate, enddate, offset) {
+   getAllData(startdate, enddate, offset) {
         return new Promise((resolve, reject) => {
             var now = new Date();
             var deleted = {
@@ -1272,16 +1273,21 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
                 isPosted: true
             };
 
+            var POStatus = {
+                "status.name": "ARRIVING"
+            };
+            
+            var query = [deleted, isPosted, POStatus];
+
             var validStartDate = new Date(startdate);
             var validEndDate = new Date(enddate);
 
-            var query = [deleted, isPosted];
-
+            
             if (startdate && enddate) {
                 validStartDate.setHours(validStartDate.getHours() - offset);
                 validEndDate.setHours(validEndDate.getHours() - offset);
                 var filterDate = {
-                    "date": {
+                    "_createdDate": {
                         $gte: validStartDate,
                         $lte: validEndDate
                     }
@@ -1291,7 +1297,7 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
             else if (!startdate && enddate) {
                 validEndDate.setHours(validEndDate.getHours() - offset);
                 var filterDateTo = {
-                    "date": {
+                    "_createdDate": {
                         $gte: now,
                         $lte: validEndDate
                     }
@@ -1301,7 +1307,7 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
             else if (startdate && !enddate) {
                 validStartDate.setHours(validStartDate.getHours() - offset);
                 var filterDateFrom = {
-                    "date": {
+                    "_createdDate": {
                         $gte: validStartDate,
                         $lte: now
                     }
@@ -1315,16 +1321,15 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
             this.collection.aggregate(
                 [{
                     $match: match
-                }, {
-                    $unwind: "$items"
-                }, {
-                    $unwind: "$items.realizations"
                 },
+                {
+                    $unwind: "$items"
+                }, 
                 {
                     $lookup: {
                         from: POColl,
-                        foreignField: "no",
-                        localField: "items.poNo",
+                        foreignField: "refNo",
+                        localField: "items.prNo",
                         as: "PO"
                     },
                 },
@@ -1354,7 +1359,6 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
                         "SatOrder": "$items.defaultUom.unit",
                         "QtyBeli": "$items.dealQuantity",
                         "SatBeli": "$items.dealUom.unit",
-                        "QtySJ": "$items.realizations.deliveredQuantity",
                         "SatKonv": "$items.uomConversion.unit",
                         "Konversi": "$items.conversion",
                         "HargaSat": "$items.pricePerDealUnit",
@@ -1369,7 +1373,7 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
                         "Tempo": "$Tempo", "MtUang": "$MtUang", "RateMU": "$RateMU", "PakaiPPN": "$PakaiPPN",
                         "PakaiPPH": "$PakaiPPH", "RatePPH": "$RatePPH", "Status": "$Status", "PRNo": "$PRNo",
                         "PlanPO": "$PlanPO", "RONo": "$RONo", "KdBrg": "$KdBrg", "NmBrg": "$NmBrg", "QtyOrder": "$QtyOrder",
-                        "SatOrder": "$SatOrder", "QtyBeli": "$QtyBeli", "QtySJ": "$QtySJ", "SatBeli": "$SatBeli",
+                        "SatOrder": "$SatOrder", "QtyBeli": "$QtyBeli", "SatBeli": "$SatBeli",
                         "SatKonv": "$SatKonv", "Konversi": "$Konversi", "HargaSat": "$HargaSat", "KdByr": "$POs.buyer.code",
                         "Konf": "$POs.unit.code", "Article": "$POs.artikel"
                     }
@@ -1381,8 +1385,7 @@ module.exports = class PurchaseOrderExternalManager extends BaseManager {
                             Tempo: "$Tempo", MtUang: "$MtUang", RateMU: "$RateMU", PakaiPPN: "$PakaiPPN", PakaiPPH: "$PakaiPPH", RatePPH: "$RatePPH", Status: "$Status", PRNo: "$PRNo", PlanPO: "$PlanPO",
                             RONo: "$RONo", KdBrg: "$KdBrg", NmBrg: "$NmBrg", QtyOrder: "$QtyOrder", SatOrder: "$SatOrder", QtyBeli: "$QtyBeli", SatBeli: "$SatBeli",
                             SatKonv: "$SatKonv", Konversi: "$Konversi", HargaSat: "$HargaSat", KdByr: "$KdByr", Konf: "$Konf", Article: "$Article"
-                        },
-                        "QtySJ": { $sum: "$QtySJ" }
+                        }
                     }
                 }
                 ])

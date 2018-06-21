@@ -200,17 +200,53 @@ module.exports = class KanbanManager extends BaseManager {
                         }
                         if (_productionOrder) {
                             valid.productionOrderId = _productionOrder._id;
-                            valid.productionOrder = _productionOrder;
+                            // valid.productionOrder = _productionOrder;
+                            
+                            valid.productionOrder._id = _productionOrder._id;
+                            valid.productionOrder.salesContractId = _productionOrder.salesContractId;
+                            valid.productionOrder.buyerId = _productionOrder.buyerId;
+                            valid.productionOrder.buyer._id = _productionOrder.buyerId;
+                            valid.productionOrder.processTypeId = _productionOrder.processTypeId;
+                            valid.productionOrder.orderTypeId = _productionOrder.orderTypeId;
+                            valid.productionOrder.processType.orderTypeId = _productionOrder.processType.orderTypeId;
+                            valid.productionOrder.materialId = _productionOrder.materialId;
+                            valid.productionOrder.material._id = _productionOrder.materialId;
+                            valid.productionOrder.materialConstructionId = _productionOrder.materialConstructionId;
+                            valid.productionOrder.materialConstruction._id = _productionOrder.materialConstructionId;
+                            valid.productionOrder.yarnMaterialId = _productionOrder.yarnMaterialId;
+                            valid.productionOrder.yarnMaterial._id = _productionOrder.yarnMaterialId;
+                            valid.productionOrder.uomId = _productionOrder.uomId;
+
                             valid.cart.uomId = _productionOrder.uomId;
-                            valid.cart.uom = _productionOrder.uom;
+                            valid.cart.uom = {
+                                unit: _productionOrder.uom.unit,
+                            };
                         }
                         if (_uom) {
                             valid.cart.uomId = _uom._id;
-                            valid.cart.uom = _uom;
+                            valid.cart.uom = {
+                                unit: _uom.unit,
+                            };
                         }
 
                         if (valid.oldKanbanId && ObjectId.isValid(valid.oldKanbanId)) {
+                            let cartNumber = valid.oldKanban.cart.cartNumber;
+                            let qty = valid.oldKanban.cart.qty;
+                            let uom = valid.oldKanban.cart.uom.unit;
+                            let pcs = valid.oldKanban.cart.pcs;
+
                             valid.oldKanbanId = new ObjectId(valid.oldKanbanId);
+                            valid.oldKanban = {
+                                _id: new ObjectId(valid.oldKanbanId),
+                                cart: {
+                                    qty: qty,
+                                    cartNumber: cartNumber,
+                                    uom: {
+                                        unit: uom,
+                                    },
+                                    pcs: pcs,
+                                }
+                            };
                         }
 
                         if (!valid.stamp) {
@@ -535,7 +571,7 @@ module.exports = class KanbanManager extends BaseManager {
             });
     }
 
-    
+
     getMachineQueueReport(query) {
         return new Promise((resolve, reject) => {
             moment.locale("id");
@@ -580,6 +616,7 @@ module.exports = class KanbanManager extends BaseManager {
                         "code": 1,
                         "cart.qty": 1,
                         "instruction.steps.machine.name": 1,
+                        "instruction.steps.deadline": 1,
                         "instruction.steps._id": 1,
                         "productionOrder.deliveryDate": 1,
                         "productionOrder.orderType.name": 1
@@ -588,7 +625,10 @@ module.exports = class KanbanManager extends BaseManager {
                     let KANBAN_FILTER = {
                         _deleted: false,
                         isComplete: false,
-                        "productionOrder.orderNo": { "$in": orderNo }
+                        "productionOrder.orderNo": { "$in": orderNo },
+                        "instruction.steps.deadline": {
+                            "$exists": true
+                        }
                     };
 
                     if (query.machine) {
@@ -603,22 +643,29 @@ module.exports = class KanbanManager extends BaseManager {
                                 if (kanban.currentStepIndex != kanban.instruction.steps.length) {
                                     let currentStep = kanban.instruction.steps[kanban.currentStepIndex];
                                     let steps = kanban.instruction.steps.slice(kanban.currentStepIndex + 1, kanban.instruction.steps.length); /* Ambil semua step di atas Current Step Index */
-                                    let month = moment(kanban.productionOrder.deliveryDate).format("MMM");
+                                    // let 
+                                    // if (steps.length > 0) {
+                                    //     console.log();
+                                    // }
                                     let orderType = kanban.productionOrder.orderType.name;
 
                                     for (let step of steps) {
-                                        if (step.machine) {
+                                        if (step.deadline && step.machine) {
+                                            let month = moment(step.deadline).format("MMM");
+                                            let year = moment(step.deadline).format("YYYY");
                                             let machineName = step.machine.name;
 
-                                            if (!data[machineName + orderType]) {
-                                                data[machineName + orderType] = {
-                                                    machine: machineName, orderType: orderType,
-                                                    Jan: 0, Feb: 0, Mar: 0, Apr: 0,
-                                                    Mei: 0, Jun: 0, Jul: 0, Ags: 0,
-                                                    Sep: 0, Okt: 0, Nov: 0, Des: 0
-                                                };
+                                            if (year === query.year) {
+                                                if (!data[machineName + orderType]) {
+                                                    data[machineName + orderType] = {
+                                                        machine: machineName, orderType: orderType,
+                                                        Jan: 0, Feb: 0, Mar: 0, Apr: 0,
+                                                        Mei: 0, Jun: 0, Jul: 0, Ags: 0,
+                                                        Sep: 0, Okt: 0, Nov: 0, Des: 0
+                                                    };
+                                                }
+                                                data[machineName + orderType][month] += kanban.cart.qty;
                                             }
-                                            data[machineName + orderType][month] += kanban.cart.qty;
                                         }
                                     }
 
@@ -643,17 +690,22 @@ module.exports = class KanbanManager extends BaseManager {
                                     return this.dailyOperationCollection
                                         .findOne(DAILY_OPERATION_FILTER, DAILY_OPERATION_FIELDS)
                                         .then((result) => {
-                                            if (result && currentStep.machine) {
-                                                if (!data[currentStep.machine.name + orderType]) {
-                                                    data[currentStep.machine.name + orderType] = {
-                                                        machine: currentStep.machine.name, orderType: orderType,
-                                                        Jan: 0, Feb: 0, Mar: 0, Apr: 0,
-                                                        Mei: 0, Jun: 0, Jul: 0, Ags: 0,
-                                                        Sep: 0, Okt: 0, Nov: 0, Des: 0
-                                                    };
-                                                }
+                                            if (!result && currentStep.machine && currentStep.deadline) {
+                                                let month = moment(currentStep.deadline).format("MMM");
+                                                let year = moment(currentStep.deadline).format("YYYY");
 
-                                                data[currentStep.machine.name + orderType][month] += kanban.cart.qty;
+                                                if (year === query.year) {
+                                                    if (!data[currentStep.machine.name + orderType]) {
+                                                        data[currentStep.machine.name + orderType] = {
+                                                            machine: currentStep.machine.name, orderType: orderType,
+                                                            Jan: 0, Feb: 0, Mar: 0, Apr: 0,
+                                                            Mei: 0, Jun: 0, Jul: 0, Ags: 0,
+                                                            Sep: 0, Okt: 0, Nov: 0, Des: 0
+                                                        };
+                                                    }
+
+                                                    data[currentStep.machine.name + orderType][month] += kanban.cart.qty;
+                                                }
                                             }
 
                                             return Promise.resolve();
@@ -694,7 +746,7 @@ module.exports = class KanbanManager extends BaseManager {
 
         for (let data of result.data) {
             let item = {};
-            
+
             item["No"] = index++;
             item["Jenis Order"] = data.orderType;
             item["Mesin"] = data.machine;
@@ -747,7 +799,7 @@ module.exports = class KanbanManager extends BaseManager {
     sumMachineQueueMonth(data, field) {
         let sum = 0;
 
-        for(let d of data) {
+        for (let d of data) {
             sum += d[field];
         }
 
